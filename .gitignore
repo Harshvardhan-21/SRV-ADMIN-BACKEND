@@ -2,6 +2,7 @@
 /dist
 /node_modules
 /build
+/admin_database.sql
 
 # Logs
 logs
@@ -71,4 +72,3 @@ docker-compose.override.yml
 /out-tsc
 
 
-/ * .sql
