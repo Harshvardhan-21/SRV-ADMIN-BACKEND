@@ -71,4 +71,4 @@ docker-compose.override.yml
 /out-tsc
 
 
-/admin_database.sql
+/ * .sql
