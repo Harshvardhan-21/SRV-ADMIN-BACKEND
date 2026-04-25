@@ -20,6 +20,7 @@ import { Settings } from './database/entities/settings.entity';
 import { SupportTicket } from './database/entities/support-ticket.entity';
 import { Testimonial } from './database/entities/testimonial.entity';
 import { Wallet } from './database/entities/wallet.entity';
+import { GiftOrder } from './database/entities/gift-order.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -66,7 +67,7 @@ import { UploadModule } from './modules/upload/upload.module';
         entities: [
           Admin, Banner, Dealer, Electrician, Notification, Offer,
           PointsConfig, Product, QrCode, Redemption, Scan, Settings,
-          SupportTicket, Testimonial, Wallet,
+          SupportTicket, Testimonial, Wallet, GiftOrder,
         ],
         synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
         logging: configService.get<string>('DB_LOGGING') === 'true',

@@ -22,14 +22,17 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 export class GiftController {
   constructor(private readonly giftService: GiftService) {}
 
+  // ─── Gift Products ────────────────────────────────────────────────────────
+
   @Get('products')
   @ApiOperation({ summary: 'Get all gift products' })
   @ApiResponse({ status: 200, description: 'List of gift products' })
   getProducts(
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('type') type?: string,
   ) {
-    return this.giftService.getProducts(parseInt(page), parseInt(limit));
+    return this.giftService.getProducts(parseInt(page), parseInt(limit), type);
   }
 
   @Post('products')
@@ -56,15 +59,33 @@ export class GiftController {
     return this.giftService.deleteProduct(id);
   }
 
+  // ─── Gift Orders ──────────────────────────────────────────────────────────
+
   @Get('orders')
-  @ApiOperation({ summary: 'Get gift orders' })
+  @ApiOperation({ summary: 'Get all gift orders' })
   @ApiResponse({ status: 200, description: 'List of gift orders' })
   getOrders(
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('status') status?: string,
+    @Query('role') role?: string,
   ) {
-    return this.giftService.getOrders(parseInt(page), parseInt(limit), status);
+    return this.giftService.getOrders(parseInt(page), parseInt(limit), status, role);
+  }
+
+  @Post('orders')
+  @ApiOperation({ summary: 'Create a new gift order' })
+  @ApiResponse({ status: 201, description: 'Gift order created successfully' })
+  createOrder(@Body() body: {
+    userId: string;
+    userName: string;
+    userCode?: string;
+    dealerName?: string;
+    role: string;
+    giftProductId: string;
+    shippingAddress?: string;
+  }) {
+    return this.giftService.createOrder(body);
   }
 
   @Patch('orders/:id/status')
@@ -72,8 +93,19 @@ export class GiftController {
   @ApiResponse({ status: 200, description: 'Order status updated successfully' })
   updateOrderStatus(
     @Param('id') id: string,
-    @Body('status') status: string,
+    @Body() body: { status: string; rejectionReason?: string; trackingNumber?: string; processedBy?: string },
   ) {
-    return this.giftService.updateOrderStatus(id, status);
+    return this.giftService.updateOrderStatus(id, body.status, {
+      rejectionReason: body.rejectionReason,
+      trackingNumber: body.trackingNumber,
+      processedBy: body.processedBy,
+    });
+  }
+
+  @Delete('orders/:id')
+  @ApiOperation({ summary: 'Delete a gift order' })
+  @ApiResponse({ status: 200, description: 'Gift order deleted successfully' })
+  deleteOrder(@Param('id') id: string) {
+    return this.giftService.deleteOrder(id);
   }
 }
