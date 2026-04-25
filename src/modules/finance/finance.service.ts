@@ -103,13 +103,14 @@ export class FinanceService {
 
   async getDealerBonus() {
     const dealers = await this.dealerRepository.find({
-      select: ['id', 'name', 'walletBalance', 'monthlyTarget', 'achievedTarget'],
+      select: ['id', 'name', 'phone', 'walletBalance', 'monthlyTarget', 'achievedTarget', 'electricianCount'],
     });
 
     const bonusData = dealers.map(dealer => ({
       ...dealer,
       bonusEligible: (dealer.achievedTarget || 0) >= (dealer.monthlyTarget || 0),
-      bonusAmount: Math.max(0, (dealer.achievedTarget || 0) - (dealer.monthlyTarget || 0)) * 0.1, // 10% bonus
+      bonusAmount: Math.max(0, (dealer.achievedTarget || 0) - (dealer.monthlyTarget || 0)) * 0.1,
+      bonusStatus: 'pending',
     }));
 
     return {
@@ -124,32 +125,27 @@ export class FinanceService {
   ) {
     const { dealerId, amount, description } = transferData;
 
-    // Create wallet transaction
+    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
+    if (!dealer) throw new Error('Dealer not found');
+
+    const currentBalance = dealer.walletBalance || 0;
+    const newBalance = currentBalance + amount;
+
     const transaction = this.walletRepository.create({
       userId: dealerId,
       userRole: UserRole.DEALER,
       type: TransactionType.CREDIT,
       source: TransactionSource.BONUS,
       amount,
-      balanceBefore: 0, // Will be updated
-      balanceAfter: 0, // Will be updated
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
       description: description || 'Dealer bonus transfer',
       referenceId: adminId,
       referenceType: 'admin_transfer',
     });
 
-    // Get current balance and update
-    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
-    if (dealer) {
-      const currentBalance = dealer.walletBalance || 0;
-      const newBalance = currentBalance + amount;
-
-      transaction.balanceBefore = currentBalance;
-      transaction.balanceAfter = newBalance;
-
-      await this.walletRepository.save(transaction);
-      await this.dealerRepository.update(dealerId, { walletBalance: newBalance });
-    }
+    await this.walletRepository.save(transaction);
+    await this.dealerRepository.update(dealerId, { walletBalance: newBalance });
 
     return {
       message: 'Dealer bonus transferred successfully',
@@ -161,7 +157,7 @@ export class FinanceService {
     const transfers = await this.walletRepository.find({
       where: { source: TransactionSource.TRANSFER },
       order: { createdAt: 'DESC' },
-      take: 50,
+      take: 200,
     });
 
     return {
@@ -176,9 +172,8 @@ export class FinanceService {
   ) {
     const { fromUser, toUser, points, reason } = body;
 
-    // toUser can be a UUID or a name/phone — store as description reference
     const transaction = this.walletRepository.create({
-      userId: adminId, // use adminId as the wallet owner for manual transfers
+      userId: adminId,
       userRole: UserRole.ELECTRICIAN,
       type: TransactionType.CREDIT,
       source: TransactionSource.TRANSFER,
@@ -200,5 +195,77 @@ export class FinanceService {
       reason,
       transaction,
     };
+  }
+
+  async reverseTransfer(id: string, adminId: string) {
+    const transfer = await this.walletRepository.findOne({ where: { id } });
+    if (!transfer) throw new Error('Transfer not found');
+
+    // Create a reversal transaction
+    const reversal = this.walletRepository.create({
+      userId: adminId,
+      userRole: UserRole.ELECTRICIAN,
+      type: TransactionType.DEBIT,
+      source: TransactionSource.TRANSFER,
+      amount: transfer.amount,
+      balanceBefore: transfer.balanceAfter,
+      balanceAfter: transfer.balanceBefore,
+      description: `Reversal of: ${transfer.description}`,
+      referenceId: id,
+      referenceType: 'transfer_reversal',
+    });
+
+    await this.walletRepository.save(reversal);
+
+    // Mark original as reversed
+    await this.walletRepository.update(id, {
+      description: `[REVERSED] ${transfer.description}`,
+      referenceType: 'reversed_transfer',
+    });
+
+    return { message: 'Transfer reversed successfully', reversal };
+  }
+
+  async deleteTransfer(id: string) {
+    const transfer = await this.walletRepository.findOne({ where: { id } });
+    if (!transfer) throw new Error('Transfer not found');
+    await this.walletRepository.delete(id);
+    return { message: 'Transfer deleted successfully' };
+  }
+
+  async markDealerBonusPaid(dealerId: string, adminId: string) {
+    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
+    if (!dealer) throw new Error('Dealer not found');
+
+    const bonusAmount = Math.max(0, (dealer.achievedTarget || 0) - (dealer.monthlyTarget || 0)) * 0.1;
+
+    if (bonusAmount > 0) {
+      const transaction = this.walletRepository.create({
+        userId: dealerId,
+        userRole: UserRole.DEALER,
+        type: TransactionType.CREDIT,
+        source: TransactionSource.BONUS,
+        amount: bonusAmount,
+        balanceBefore: dealer.walletBalance || 0,
+        balanceAfter: (dealer.walletBalance || 0) + bonusAmount,
+        description: `Monthly bonus payment`,
+        referenceId: adminId,
+        referenceType: 'bonus_payment',
+      });
+      await this.walletRepository.save(transaction);
+      await this.dealerRepository.update(dealerId, {
+        walletBalance: (dealer.walletBalance || 0) + bonusAmount,
+      });
+    }
+
+    return { message: 'Dealer bonus marked as paid', dealerId, bonusAmount };
+  }
+
+  async bulkMarkDealerBonusPaid(dealerIds: string[], adminId: string) {
+    const results = await Promise.allSettled(
+      dealerIds.map(id => this.markDealerBonusPaid(id, adminId))
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    return { message: `${succeeded}/${dealerIds.length} bonuses marked as paid`, succeeded };
   }
 }
