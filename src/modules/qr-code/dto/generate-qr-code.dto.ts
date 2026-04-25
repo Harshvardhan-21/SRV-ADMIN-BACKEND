@@ -6,10 +6,10 @@ export class GenerateQrCodeDto {
   @IsString()
   productId: string;
 
-  @ApiProperty({ minimum: 1, maximum: 1000 })
+  @ApiProperty({ minimum: 1, maximum: 20000 })
   @IsNumber()
   @Min(1)
-  @Max(1000)
+  @Max(20000)
   quantity: number;
 
   @ApiProperty({ required: false })

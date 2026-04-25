@@ -21,14 +21,14 @@ export class QrCodeController {
   constructor(private readonly qrCodeService: QrCodeService) {}
 
   @Post('generate')
-  @ApiOperation({ summary: 'Generate QR codes for product' })
-  @ApiResponse({ status: 201, description: 'QR codes generated successfully' })
+  @ApiOperation({ summary: 'Generate QR codes for a product (up to 20,000)' })
+  @ApiResponse({ status: 201, description: 'QR codes generated and saved to database' })
   generate(@Body() generateQrCodeDto: GenerateQrCodeDto) {
     return this.qrCodeService.generate(generateQrCodeDto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all QR codes' })
+  @ApiOperation({ summary: 'Get all QR codes (paginated)' })
   @ApiResponse({ status: 200, description: 'List of QR codes' })
   findAll(
     @Query('page') page = '1',
@@ -44,6 +44,14 @@ export class QrCodeController {
     );
   }
 
+  // NOTE: This route MUST come before /:id to avoid "delete-all" being treated as an id
+  @Delete('delete-all')
+  @ApiOperation({ summary: 'Delete all QR codes (optionally filter by productId)' })
+  @ApiResponse({ status: 200, description: 'QR codes deleted' })
+  removeAll(@Query('productId') productId?: string) {
+    return this.qrCodeService.removeAll(productId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get QR code by ID' })
   @ApiResponse({ status: 200, description: 'QR code details' })
@@ -52,7 +60,7 @@ export class QrCodeController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete QR code' })
+  @ApiOperation({ summary: 'Delete a single QR code by ID or code string' })
   @ApiResponse({ status: 200, description: 'QR code deleted successfully' })
   remove(@Param('id') id: string) {
     return this.qrCodeService.remove(id);
