@@ -1,0 +1,436 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  super_admin
+  admin
+  staff
+}
+
+enum UserRole {
+  dealer
+  electrician
+}
+
+enum MemberTier {
+  Silver
+  Gold
+  Platinum
+  Diamond
+}
+
+enum UserStatus {
+  active
+  pending
+  inactive
+  suspended
+}
+
+enum KYCStatus {
+  not_submitted
+  pending
+  verified
+  rejected
+}
+
+enum ElectricianSubCategory {
+  General_Electrician     @map("General Electrician")
+  Industrial_Electrician  @map("Industrial Electrician")
+  Residential_Wiring      @map("Residential Wiring")
+  Solar_Installer         @map("Solar Installer")
+  AC_Appliance_Technician @map("AC/Appliance Technician")
+  Panel_Board_Specialist  @map("Panel Board Specialist")
+  Lighting_Specialist     @map("Lighting Specialist")
+  Contractor              @map("Contractor")
+}
+
+enum ScanMode {
+  single
+  multi
+}
+
+enum RedemptionStatus {
+  pending
+  approved
+  rejected
+  processing
+  completed
+}
+
+enum NotificationStatus {
+  draft
+  scheduled
+  sent
+  failed
+}
+
+enum OfferStatus {
+  active
+  scheduled
+  expired
+  inactive
+}
+
+enum TransactionType {
+  credit
+  debit
+}
+
+enum TransactionSource {
+  scan
+  bonus
+  redemption
+  transfer
+  refund
+  commission
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  name         String
+  role         AdminRole @default(staff)
+  phone        String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  refreshToken String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+model Dealer {
+  id                 String      @id @default(uuid())
+  name               String
+  phone              String      @unique
+  dealerCode         String      @unique
+  email              String?
+  profileImage       String?
+  town               String
+  district           String
+  state              String
+  address            String
+  pincode            String?
+  gstNumber          String?
+  contactPerson      String?
+  tier               MemberTier  @default(Silver)
+  electricianCount   Int         @default(0)
+  status             UserStatus  @default(pending)
+  bankLinked         Boolean     @default(false)
+  upiId              String?
+  bankAccount        String?
+  ifsc               String?
+  bankName           String?
+  accountHolderName  String?
+  kycStatus          KYCStatus   @default(not_submitted)
+  aadharNumber       String?
+  panNumber          String?
+  gstDocument        String?
+  aadharDocument     String?
+  panDocument        String?
+  kycRejectionReason String?
+  totalOrders        Int         @default(0)
+  monthlyTarget      Decimal     @default(0) @db.Decimal(10, 2)
+  achievedTarget     Decimal     @default(0) @db.Decimal(10, 2)
+  walletBalance      Int         @default(0)
+  lastActivityAt     DateTime?
+  joinedDate         DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  electricians       Electrician[]
+
+  @@map("dealers")
+}
+
+model Electrician {
+  id                 String                  @id @default(uuid())
+  name               String
+  phone              String                  @unique
+  electricianCode    String                  @unique
+  email              String?
+  profileImage       String?
+  city               String
+  state              String
+  district           String
+  pincode            String?
+  address            String?
+  subCategory        ElectricianSubCategory  @default(General_Electrician)
+  tier               MemberTier              @default(Silver)
+  totalPoints        Int                     @default(0)
+  totalScans         Int                     @default(0)
+  walletBalance      Int                     @default(0)
+  totalRedemptions   Int                     @default(0)
+  status             UserStatus              @default(pending)
+  bankLinked         Boolean                 @default(false)
+  upiId              String?
+  bankAccount        String?
+  ifsc               String?
+  bankName           String?
+  accountHolderName  String?
+  kycStatus          KYCStatus               @default(not_submitted)
+  aadharNumber       String?
+  panNumber          String?
+  aadharDocument     String?
+  panDocument        String?
+  kycRejectionReason String?
+  dealerId           String?
+  dealer             Dealer?                 @relation(fields: [dealerId], references: [id], onDelete: SetNull)
+  lastActivityAt     DateTime?
+  joinedDate         DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@map("electricians")
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  name         String
+  sub          String
+  category     String
+  subCategory  String?
+  image        String?
+  points       Int           @default(0)
+  badge        String?
+  price        Decimal       @db.Decimal(10, 2)
+  mrp          Decimal?      @db.Decimal(10, 2)
+  stock        Int           @default(0)
+  totalScanned Int           @default(0)
+  sku          String?       @unique
+  weight       String?
+  description  String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  scans        Scan[]
+  pointsConfigs PointsConfig[]
+  qrCodes      QrCode[]
+
+  @@map("products")
+}
+
+model QrCode {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  productId     String
+  productName   String
+  qrImageUrl    String?
+  isScanned     Boolean  @default(false)
+  scanCount     Int      @default(0)
+  lastScannedBy String?
+  lastScannedAt DateTime?
+  batchId       String?
+  isActive      Boolean  @default(true)
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("qr_codes")
+}
+
+model Scan {
+  id          String   @id @default(uuid())
+  userId      String
+  userName    String
+  role        UserRole
+  productId   String
+  productName String
+  points      Int      @default(0)
+  mode        ScanMode @default(single)
+  location    String?
+  latitude    String?
+  longitude   String?
+  qrCodeId    String?
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  scannedAt   DateTime @default(now())
+
+  @@map("scans")
+}
+
+model Redemption {
+  id                String           @id @default(uuid())
+  userId            String
+  userName          String
+  role              UserRole
+  type              String
+  points            Int              @default(0)
+  amount            Decimal?         @db.Decimal(10, 2)
+  status            RedemptionStatus @default(pending)
+  upiId             String?
+  bankAccount       String?
+  ifsc              String?
+  accountHolderName String?
+  transactionId     String?
+  rejectionReason   String?
+  processedBy       String?
+  processedAt       DateTime?
+  requestedAt       DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@map("redemptions")
+}
+
+model WalletTransaction {
+  id            String            @id @default(uuid())
+  userId        String
+  userRole      UserRole
+  type          TransactionType
+  source        TransactionSource
+  amount        Decimal           @db.Decimal(10, 2)
+  balanceBefore Decimal           @db.Decimal(10, 2)
+  balanceAfter  Decimal           @db.Decimal(10, 2)
+  description   String?
+  referenceId   String?
+  referenceType String?
+  createdAt     DateTime          @default(now())
+
+  @@map("wallet_transactions")
+}
+
+model Notification {
+  id            String             @id @default(uuid())
+  title         String
+  message       String
+  targetRole    String?
+  targetUserIds String[]
+  status        NotificationStatus @default(draft)
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  totalSent     Int                @default(0)
+  totalOpened   Int                @default(0)
+  openRate      Decimal            @default(0) @db.Decimal(5, 2)
+  imageUrl      String?
+  actionUrl     String?
+  createdBy     String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@map("notifications")
+}
+
+model Banner {
+  id           String   @id @default(uuid())
+  title        String
+  imageUrl     String?
+  bgColor      String?  @default("#FFFFFF")
+  resizeMode   String?  @default("cover")
+  isActive     Boolean  @default(true)
+  displayOrder Int      @default(0)
+  targetRole   String[]
+  linkUrl      String?
+  status       String   @default("active")
+  order        Int      @default(0)
+  clickCount   Int      @default(0)
+  viewCount    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("banners")
+}
+
+model Offer {
+  id                String      @id @default(uuid())
+  title             String
+  description       String
+  discount          String?
+  validFrom         DateTime    @db.Date
+  validTo           DateTime    @db.Date
+  targetRole        String?
+  status            OfferStatus @default(active)
+  productCategory   String?
+  bonusPoints       Int         @default(0)
+  imageUrl          String?
+  termsAndConditions String?
+  usageCount        Int         @default(0)
+  maxUsage          Int?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@map("offers")
+}
+
+model Testimonial {
+  id             String   @id @default(uuid())
+  personName     String
+  initials       String?
+  location       String?
+  tier           String?  @default("Silver")
+  yearsConnected Int      @default(1)
+  quote          String
+  highlight      String?
+  gradientColors String[]
+  ringColor      String?
+  isActive       Boolean  @default(true)
+  displayOrder   Int      @default(1)
+  name           String?
+  role           String?
+  content        String?
+  rating         Decimal? @default(5.0) @db.Decimal(2, 1)
+  imageUrl       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("testimonials")
+}
+
+model SupportTicket {
+  id          String                @id @default(uuid())
+  userId      String?
+  userName    String?
+  userRole    UserRole?
+  subject     String
+  message     String
+  status      SupportTicketStatus   @default(open)
+  priority    SupportTicketPriority @default(medium)
+  assignedTo  String?
+  response    String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@map("support_tickets")
+}
+
+model Settings {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model PointsConfig {
+  id          String   @id @default(uuid())
+  productId   String
+  productName String
+  basePoints  Int      @default(0)
+  bonusPoints Int      @default(0)
+  isActive    Boolean  @default(true)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("points_config")
+}

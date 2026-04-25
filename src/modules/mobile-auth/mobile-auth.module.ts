@@ -1,0 +1,29 @@
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MobileAuthController } from './mobile-auth.controller';
+import { MobileAuthService } from './mobile-auth.service';
+import { MobileJwtStrategy } from './mobile-jwt.strategy';
+import { Electrician } from '../../database/entities/electrician.entity';
+import { Dealer } from '../../database/entities/dealer.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([Electrician, Dealer]),
+    PassportModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: { expiresIn: configService.get('JWT_EXPIRES_IN') || '7d' },
+      }),
+      inject: [ConfigService],
+    }),
+  ],
+  controllers: [MobileAuthController],
+  providers: [MobileAuthService, MobileJwtStrategy],
+  exports: [MobileAuthService, MobileJwtStrategy],
+})
+export class MobileAuthModule {}
