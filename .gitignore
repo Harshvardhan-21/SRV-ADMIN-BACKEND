@@ -69,3 +69,6 @@ docker-compose.override.yml
 # Build
 /tmp
 /out-tsc
+
+
+admin_database.sql
