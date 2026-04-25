@@ -19,6 +19,7 @@ import { Dealer } from '../../database/entities/dealer.entity';
 import { Redemption } from '../../database/entities/redemption.entity';
 import { Settings } from '../../database/entities/settings.entity';
 import { UserRole, ScanMode } from '../../common/enums';
+import { TierService } from '../../common/services/tier.service';
 
 @Injectable()
 export class MobileService {
@@ -47,6 +48,7 @@ export class MobileService {
     private redemptionRepository: Repository<Redemption>,
     @InjectRepository(Settings)
     private settingsRepository: Repository<Settings>,
+    private readonly tierService: TierService,
   ) {}
 
   async getProducts(category?: string) {
@@ -215,12 +217,13 @@ export class MobileService {
     if (role === 'electrician' && user) {
       const newPoints = (user.totalPoints ?? 0) + points;
       const newScans = (user.totalScans ?? 0) + 1;
-      const newTier = this.calculateElectricianTier(newPoints);
+      const newWallet = (user.walletBalance ?? 0) + points;
+      const newTier = this.tierService.calculateElectricianTier(newPoints);
 
       await this.electricianRepository.update(userId, {
         totalPoints: newPoints,
         totalScans: newScans,
-        walletBalance: (user.walletBalance ?? 0) + points,
+        walletBalance: newWallet,
         tier: newTier as any,
         lastActivityAt: new Date(),
       });
@@ -233,7 +236,7 @@ export class MobileService {
         source: 'scan' as any,
         amount: points,
         balanceBefore: user.walletBalance ?? 0,
-        balanceAfter: (user.walletBalance ?? 0) + points,
+        balanceAfter: newWallet,
         description: `Scan: ${qr.product.name}`,
         referenceId: scan.id,
         referenceType: 'scan',
@@ -344,10 +347,11 @@ export class MobileService {
         return { message: 'Electrician already in your network', electrician: existing };
       }
       // Link to this dealer
+      const oldDealerId = existing.dealerId;
       await this.electricianRepository.update(existing.id, { dealerId });
-      await this.dealerRepository.update(dealerId, {
-        electricianCount: (dealer.electricianCount ?? 0) + 1,
-      });
+      // Sync both old and new dealer tiers
+      if (oldDealerId) await this.tierService.syncDealerTier(oldDealerId);
+      await this.tierService.syncDealerTier(dealerId);
       return { message: 'Electrician linked to your network', electrician: existing };
     }
 
@@ -365,18 +369,10 @@ export class MobileService {
     });
 
     const saved = await this.electricianRepository.save(electrician);
-    await this.dealerRepository.update(dealerId, {
-      electricianCount: (dealer.electricianCount ?? 0) + 1,
-    });
+    // Sync dealer tier after adding electrician
+    await this.tierService.syncDealerTier(dealerId);
 
     return { message: 'Electrician added successfully', electrician: saved };
-  }
-
-  private calculateElectricianTier(points: number): string {
-    if (points >= 10000) return 'Diamond';
-    if (points >= 5001) return 'Platinum';
-    if (points >= 1001) return 'Gold';
-    return 'Silver';
   }
 
   async getRedemptionHistory(userId: string, page: number = 1, limit: number = 20) {

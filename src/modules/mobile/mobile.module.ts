@@ -15,6 +15,7 @@ import { Electrician } from '../../database/entities/electrician.entity';
 import { Dealer } from '../../database/entities/dealer.entity';
 import { Redemption } from '../../database/entities/redemption.entity';
 import { Settings } from '../../database/entities/settings.entity';
+import { TierModule } from '../../common/services/tier.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Settings } from '../../database/entities/settings.entity';
       QrCode, Scan, Wallet, Electrician, Dealer, Redemption, Settings,
     ]),
     MobileAuthModule,
+    TierModule,
   ],
   controllers: [MobileController],
   providers: [MobileService],

@@ -7,9 +7,10 @@ import { Dealer } from '../../database/entities/dealer.entity';
 import { Scan } from '../../database/entities/scan.entity';
 import { Redemption } from '../../database/entities/redemption.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
+import { TierModule } from '../../common/services/tier.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Electrician, Dealer, Scan, Redemption, Wallet])],
+  imports: [TypeOrmModule.forFeature([Electrician, Dealer, Scan, Redemption, Wallet]), TierModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],
