@@ -198,4 +198,19 @@ export class ElectricianService {
     });
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
+
+  async getTierCounts() {
+    const rows = await this.electricianRepository
+      .createQueryBuilder('electrician')
+      .select('electrician.tier', 'tier')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('electrician.tier')
+      .getRawMany();
+
+    const result: Record<string, number> = { Silver: 0, Gold: 0, Platinum: 0, Diamond: 0 };
+    for (const row of rows) {
+      result[row.tier] = parseInt(row.count, 10);
+    }
+    return result;
+  }
 }

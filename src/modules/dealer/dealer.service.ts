@@ -147,4 +147,14 @@ export class DealerService {
     });
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
+
+  async getStats() {
+    const [total, active, pending, inactive] = await Promise.all([
+      this.dealerRepository.count(),
+      this.dealerRepository.count({ where: { status: UserStatus.ACTIVE } }),
+      this.dealerRepository.count({ where: { status: UserStatus.PENDING } }),
+      this.dealerRepository.count({ where: { status: UserStatus.INACTIVE } }),
+    ]);
+    return { total, active, pending, inactive };
+  }
 }

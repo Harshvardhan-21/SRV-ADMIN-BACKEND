@@ -73,11 +73,22 @@ export class QrCodeService {
     };
   }
 
+  async getStats() {
+    const [total, active, used] = await Promise.all([
+      this.qrCodeRepository.count(),
+      this.qrCodeRepository.count({ where: { isScanned: false } }),
+      this.qrCodeRepository.count({ where: { isScanned: true } }),
+    ]);
+    return { total, active, used };
+  }
+
   async findAll(
     page: number = 1,
     limit: number = 20,
     productId?: string,
     isScanned?: boolean,
+    search?: string,
+    batchId?: string,
   ) {
     const skip = (page - 1) * limit;
     const queryBuilder = this.qrCodeRepository
@@ -92,6 +103,17 @@ export class QrCodeService {
       queryBuilder.andWhere('qrCode.isScanned = :isScanned', { isScanned });
     }
 
+    if (search) {
+      queryBuilder.andWhere(
+        '(qrCode.code ILIKE :search OR qrCode.productName ILIKE :search OR qrCode.batchId ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (batchId) {
+      queryBuilder.andWhere('qrCode.batchId = :batchId', { batchId });
+    }
+
     queryBuilder
       .orderBy('qrCode.createdAt', 'DESC')
       .skip(skip)
@@ -99,11 +121,34 @@ export class QrCodeService {
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    // Attach points from product relation
-    const enriched = data.map(qr => ({
-      ...qr,
-      points: (qr as any).product?.points ?? 0,
-    }));
+    // Attach points from product relation — explicitly map to plain objects
+    // to avoid TypeORM entity serialization issues with spread operator
+    const enriched = data.map(qr => {
+      const productPoints = qr.product?.points ?? 0;
+      return {
+        id: qr.id,
+        code: qr.code,
+        productId: qr.productId,
+        productName: qr.productName,
+        qrImageUrl: qr.qrImageUrl,
+        isScanned: qr.isScanned,
+        scanCount: qr.scanCount,
+        lastScannedBy: qr.lastScannedBy,
+        lastScannedAt: qr.lastScannedAt,
+        batchId: qr.batchId,
+        isActive: qr.isActive,
+        createdAt: qr.createdAt,
+        updatedAt: qr.updatedAt,
+        points: productPoints,
+        product: qr.product ? {
+          id: qr.product.id,
+          name: qr.product.name,
+          points: qr.product.points,
+          sku: qr.product.sku,
+          isActive: qr.product.isActive,
+        } : null,
+      };
+    });
 
     return {
       data: enriched,

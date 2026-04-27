@@ -44,6 +44,13 @@ export class ElectricianController {
     return this.electricianService.findAll(parseInt(page), parseInt(limit), search, status, tier, state);
   }
 
+  @Get('tier-counts')
+  @ApiOperation({ summary: 'Get electrician tier distribution counts' })
+  @ApiResponse({ status: 200, description: 'Tier counts' })
+  getTierCounts() {
+    return this.electricianService.getTierCounts();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get electrician by ID' })
   @ApiResponse({ status: 200, description: 'Electrician details' })

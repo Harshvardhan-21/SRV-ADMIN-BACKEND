@@ -19,35 +19,51 @@ export class ScanService {
     role?: UserRole,
     dateFrom?: string,
     dateTo?: string,
+    search?: string,
+    mode?: string,
   ) {
     const skip = (page - 1) * limit;
     const queryBuilder = this.scanRepository.createQueryBuilder('scan');
 
-    if (userId) {
-      queryBuilder.andWhere('scan.userId = :userId', { userId });
-    }
+    if (userId) queryBuilder.andWhere('scan.userId = :userId', { userId });
+    if (productId) queryBuilder.andWhere('scan.productId = :productId', { productId });
+    if (role) queryBuilder.andWhere('scan.role = :role', { role });
+    if (mode) queryBuilder.andWhere('scan.mode = :mode', { mode });
+    if (search) queryBuilder.andWhere('(scan.userName ILIKE :search OR scan.productName ILIKE :search)', { search: `%${search}%` });
+    if (dateFrom && dateTo) queryBuilder.andWhere('scan.scannedAt BETWEEN :dateFrom AND :dateTo', { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo) });
 
-    if (productId) {
-      queryBuilder.andWhere('scan.productId = :productId', { productId });
-    }
-
-    if (role) {
-      queryBuilder.andWhere('scan.role = :role', { role });
-    }
-
-    if (dateFrom && dateTo) {
-      queryBuilder.andWhere('scan.scannedAt BETWEEN :dateFrom AND :dateTo', {
-        dateFrom: new Date(dateFrom),
-        dateTo: new Date(dateTo),
-      });
-    }
-
-    queryBuilder
-      .orderBy('scan.scannedAt', 'DESC')
-      .skip(skip)
-      .take(limit);
-
+    queryBuilder.orderBy('scan.scannedAt', 'DESC').skip(skip).take(limit);
     const [data, total] = await queryBuilder.getManyAndCount();
+
+    // Helper to build a base query with the same filters (for aggregates)
+    const baseQb = () => {
+      const qb = this.scanRepository.createQueryBuilder('scan');
+      if (userId) qb.andWhere('scan.userId = :userId', { userId });
+      if (productId) qb.andWhere('scan.productId = :productId', { productId });
+      if (role) qb.andWhere('scan.role = :role', { role });
+      if (search) qb.andWhere('(scan.userName ILIKE :search OR scan.productName ILIKE :search)', { search: `%${search}%` });
+      if (dateFrom && dateTo) qb.andWhere('scan.scannedAt BETWEEN :dateFrom AND :dateTo', { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo) });
+      return qb;
+    };
+
+    // Total points across all filtered records
+    const pointsResult = await baseQb().select('SUM(scan.points)', 'total').getRawOne();
+    const totalPoints = parseInt(pointsResult?.total || '0');
+
+    // Mode counts across all filtered records (excluding mode filter so we always get both)
+    const modeQb = this.scanRepository.createQueryBuilder('scan');
+    if (userId) modeQb.andWhere('scan.userId = :userId', { userId });
+    if (productId) modeQb.andWhere('scan.productId = :productId', { productId });
+    if (role) modeQb.andWhere('scan.role = :role', { role });
+    if (search) modeQb.andWhere('(scan.userName ILIKE :search OR scan.productName ILIKE :search)', { search: `%${search}%` });
+    if (dateFrom && dateTo) modeQb.andWhere('scan.scannedAt BETWEEN :dateFrom AND :dateTo', { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo) });
+    const modeCounts = await modeQb
+      .select('scan.mode', 'mode')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('scan.mode')
+      .getRawMany();
+    const totalSingle = parseInt(modeCounts.find(r => r.mode === 'single')?.count || '0');
+    const totalMulti = parseInt(modeCounts.find(r => r.mode === 'multi')?.count || '0');
 
     return {
       data,
@@ -55,6 +71,9 @@ export class ScanService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      totalPoints,
+      totalSingle,
+      totalMulti,
     };
   }
 
@@ -81,24 +100,13 @@ export class ScanService {
 
     const [totalScans, todayScans, yesterdayScans, weekScans] = await Promise.all([
       this.scanRepository.count(),
-      this.scanRepository.count({
-        where: { scannedAt: Between(today, new Date()) },
-      }),
-      this.scanRepository.count({
-        where: { scannedAt: Between(yesterday, today) },
-      }),
-      this.scanRepository.count({
-        where: { scannedAt: Between(weekAgo, new Date()) },
-      }),
+      this.scanRepository.count({ where: { scannedAt: Between(today, new Date()) } }),
+      this.scanRepository.count({ where: { scannedAt: Between(yesterday, today) } }),
+      this.scanRepository.count({ where: { scannedAt: Between(weekAgo, new Date()) } }),
     ]);
 
-    const electricianScans = await this.scanRepository.count({
-      where: { role: UserRole.ELECTRICIAN },
-    });
-
-    const dealerScans = await this.scanRepository.count({
-      where: { role: UserRole.DEALER },
-    });
+    const electricianScans = await this.scanRepository.count({ where: { role: UserRole.ELECTRICIAN } });
+    const dealerScans = await this.scanRepository.count({ where: { role: UserRole.DEALER } });
 
     return {
       totalScans,

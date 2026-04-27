@@ -27,6 +27,13 @@ export class QrCodeController {
     return this.qrCodeService.generate(generateQrCodeDto);
   }
 
+  @Get('stats')
+  @ApiOperation({ summary: 'Get QR code stats (total, active, used)' })
+  @ApiResponse({ status: 200, description: 'QR stats' })
+  getStats() {
+    return this.qrCodeService.getStats();
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get all QR codes (paginated)' })
   @ApiResponse({ status: 200, description: 'List of QR codes' })
@@ -35,12 +42,27 @@ export class QrCodeController {
     @Query('limit') limit = '20',
     @Query('productId') productId?: string,
     @Query('isScanned') isScanned?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('batchId') batchId?: string,
   ) {
+    // Support both isScanned=true/false and status=active/used
+    let scannedFilter: boolean | undefined;
+    if (isScanned !== undefined) {
+      scannedFilter = isScanned === 'true';
+    } else if (status === 'used') {
+      scannedFilter = true;
+    } else if (status === 'active') {
+      scannedFilter = false;
+    }
+
     return this.qrCodeService.findAll(
       parseInt(page),
       parseInt(limit),
       productId,
-      isScanned !== undefined ? isScanned === 'true' : undefined,
+      scannedFilter,
+      search,
+      batchId,
     );
   }
 
