@@ -22,6 +22,30 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
+  @Get('categories')
+  @ApiOperation({ summary: 'Get all product categories' })
+  getCategories() {
+    return this.productService.getCategories();
+  }
+
+  @Post('categories')
+  @ApiOperation({ summary: 'Create product category' })
+  createCategory(@Body() body: any) {
+    return this.productService.createCategory(body);
+  }
+
+  @Patch('categories/:id')
+  @ApiOperation({ summary: 'Update product category' })
+  updateCategory(@Param('id') id: string, @Body() body: any) {
+    return this.productService.updateCategory(id, body);
+  }
+
+  @Delete('categories/:id')
+  @ApiOperation({ summary: 'Delete product category' })
+  deleteCategory(@Param('id') id: string) {
+    return this.productService.deleteCategory(id);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create new product' })
   @ApiResponse({ status: 201, description: 'Product created successfully' })

@@ -27,6 +27,12 @@ export class Redemption {
   @Column()
   type: string;
 
+  @Column({ nullable: true })
+  schemeId: string;
+
+  @Column({ type: 'text', nullable: true })
+  note: string;
+
   @Column({ default: 0 })
   points: number;
 

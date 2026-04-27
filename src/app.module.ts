@@ -20,6 +20,14 @@ import { Settings } from './database/entities/settings.entity';
 import { SupportTicket } from './database/entities/support-ticket.entity';
 import { Testimonial } from './database/entities/testimonial.entity';
 import { Wallet } from './database/entities/wallet.entity';
+import { ProductCategory } from './database/entities/product-category.entity';
+import { RewardScheme } from './database/entities/reward-scheme.entity';
+import { Festival } from './database/entities/festival.entity';
+import { AppRating } from './database/entities/app-rating.entity';
+import { UserProfileImage } from './database/entities/user-profile-image.entity';
+import { UserQrCode } from './database/entities/user-qr-code.entity';
+import { OtpCode } from './database/entities/otp-code.entity';
+import { ChatConversation, ChatMessage } from './database/entities/chat.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -44,6 +52,9 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MobileAuthModule } from './modules/mobile-auth/mobile-auth.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { AppCompatModule } from './modules/app-compat/app-compat.module';
+import { AppContentModule } from './modules/app-content/app-content.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -66,7 +77,9 @@ import { UploadModule } from './modules/upload/upload.module';
         entities: [
           Admin, Banner, Dealer, Electrician, Notification, Offer,
           PointsConfig, Product, QrCode, Redemption, Scan, Settings,
-          SupportTicket, Testimonial, Wallet,
+          SupportTicket, Testimonial, Wallet, ProductCategory,
+RewardScheme, Festival, AppRating, UserProfileImage,
+          UserQrCode, OtpCode, ChatConversation, ChatMessage,
         ],
         synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
         logging: configService.get<string>('DB_LOGGING') === 'true',
@@ -114,6 +127,9 @@ import { UploadModule } from './modules/upload/upload.module';
     MobileAuthModule,
     MobileModule,
     UploadModule,
+AppCompatModule,
+    AppContentModule,
+    ChatModule,
   ],
 })
 export class AppModule {}

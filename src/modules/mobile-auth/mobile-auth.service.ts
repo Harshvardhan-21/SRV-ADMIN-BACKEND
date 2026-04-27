@@ -10,10 +10,8 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Electrician } from '../../database/entities/electrician.entity';
 import { Dealer } from '../../database/entities/dealer.entity';
+import { OtpCode } from '../../database/entities/otp-code.entity';
 import { MobileLoginDto, VerifyOtpDto } from './dto/mobile-login.dto';
-
-// In-memory OTP store (production mein Redis use karein)
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
 
 @Injectable()
 export class MobileAuthService {
@@ -22,16 +20,14 @@ export class MobileAuthService {
     private electricianRepository: Repository<Electrician>,
     @InjectRepository(Dealer)
     private dealerRepository: Repository<Dealer>,
+    @InjectRepository(OtpCode)
+    private otpCodeRepository: Repository<OtpCode>,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
 
   private generateOtp(): string {
-    // Development mein fixed OTP, production mein SMS gateway use karein
-    if (this.configService.get('NODE_ENV') === 'development') {
-      return '1234';
-    }
-    return Math.floor(1000 + Math.random() * 9000).toString();
+    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
   }
 
   async sendOtp(dto: MobileLoginDto) {
@@ -57,39 +53,52 @@ export class MobileAuthService {
     }
 
     const otp = this.generateOtp();
-    const key = `${phone}:${role}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + 5 * 60 * 1000 }); // 5 min expiry
+    const purpose = `MOBILE_${role.toUpperCase()}_LOGIN`;
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // TODO: Integrate SMS gateway here (Twilio / MSG91 / Fast2SMS)
+    await this.otpCodeRepository.delete({ phone, purpose });
+    await this.otpCodeRepository.save(
+      this.otpCodeRepository.create({
+        phone,
+        purpose,
+        code: otp,
+        verified: false,
+        expiresAt,
+      }),
+    );
+
     console.log(`[OTP] Phone: ${phone}, Role: ${role}, OTP: ${otp}`);
 
     return {
       success: true,
       message: 'OTP sent successfully',
-      // In development, return OTP for testing
-      ...(this.configService.get('NODE_ENV') === 'development' && { devOtp: otp }),
+      expiresInSeconds: 300,
+      devOtp: otp, // Show in dev mode — remove in production
     };
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
     const { phone, role, otp } = dto;
-    const key = `${phone}:${role}`;
-    const stored = otpStore.get(key);
+    const purpose = `MOBILE_${role.toUpperCase()}_LOGIN`;
+    const stored = await this.otpCodeRepository.findOne({
+      where: { phone, purpose, verified: false },
+      order: { createdAt: 'DESC' },
+    });
 
     if (!stored) {
       throw new BadRequestException('OTP not found or expired. Please request a new OTP.');
     }
 
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(key);
+    if (Date.now() > new Date(stored.expiresAt).getTime()) {
+      await this.otpCodeRepository.delete({ id: stored.id });
       throw new BadRequestException('OTP expired. Please request a new OTP.');
     }
 
-    if (stored.otp !== otp) {
+    if (stored.code !== otp) {
       throw new UnauthorizedException('Invalid OTP.');
     }
 
-    otpStore.delete(key);
+    await this.otpCodeRepository.update(stored.id, { verified: true });
 
     // Get user profile
     let user: any;
@@ -211,6 +220,11 @@ export class MobileAuthService {
       });
       return this.getProfile(userId, role);
     }
+  }
+
+  async logout(userId: string, role: string) {
+    await this.electricianRepository.update(userId, { lastActivityAt: new Date() });
+    return { success: true, message: 'Logged out successfully' };
   }
 
   private formatUserProfile(user: any, role: string) {

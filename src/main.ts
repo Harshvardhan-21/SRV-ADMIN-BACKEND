@@ -12,47 +12,44 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   const configService = app.get(ConfigService);
 
-  // Body size limit — must be set BEFORE helmet/compression
+  // Body size limit must be set before helmet/compression.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const express = require('express');
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // CORS must be enabled BEFORE helmet
-  const corsOrigins = configService.get('CORS_ORIGIN')?.split(',') || ['http://localhost:3000'];
+  // CORS must be enabled before helmet.
+  const corsOrigins = configService.get('CORS_ORIGIN')?.split(',') || ['http://localhost:3003'];
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Allow mobile apps (no origin) and listed origins
       if (!origin || corsOrigins.includes(origin) || corsOrigins.includes('*')) {
         callback(null, true);
-      } else {
-        callback(null, true); // Allow all in development; restrict in production
+        return;
       }
+
+      callback(null, true); // Allow all in development; restrict in production.
     },
     credentials: configService.get('CORS_CREDENTIALS') === 'true',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  // Security (after CORS so helmet doesn't override CORS headers)
-  app.use(helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }));
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.use(compression());
 
-  // Global prefix
   const apiPrefix = configService.get('API_PREFIX') || 'api/v1';
   app.setGlobalPrefix(apiPrefix);
 
-  // API Versioning
   app.enableVersioning({
     type: VersioningType.URI,
   });
 
-  // Global exception filter — converts DB errors to readable messages
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -64,7 +61,6 @@ async function bootstrap() {
     }),
   );
 
-  // Swagger Documentation
   const config = new DocumentBuilder()
     .setTitle('SRV Electricals Admin API')
     .setDescription('Complete API documentation for SRV Electricals Admin Panel Backend')
@@ -107,29 +103,20 @@ async function bootstrap() {
     },
   });
 
-  // Root redirect → Swagger docs
   const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.get('/', (_req: any, res: any) => {
+  expressApp.get('/', (_req: unknown, res: { redirect: (url: string) => void }) => {
     res.redirect('/api/docs');
   });
 
-  // Serve uploaded files as static assets
   expressApp.use('/uploads', require('express').static(join(process.cwd(), 'uploads')));
 
-  const port = configService.get('PORT') || 3000;
-  await app.listen(port);
+  const port = Number(configService.get('PORT') || 3003);
+  const serverHost = configService.get('SERVER_HOST') || 'localhost';
+  await app.listen(port, '0.0.0.0');
 
-  console.log(`
-  ╔═══════════════════════════════════════════════════════════╗
-  ║                                                           ║
-  ║   🚀 SRV Electricals Admin Backend API                   ║
-  ║                                                           ║
-  ║   Server running on: http://localhost:${port}              ║
-  ║   API Docs: http://localhost:${port}/api/docs             ║
-  ║   Environment: ${configService.get('NODE_ENV')}                      ║
-  ║                                                           ║
-  ╚═══════════════════════════════════════════════════════════╝
-  `);
+  console.log(`SRV Admin backend running at http://${serverHost}:${port}`);
+  console.log(`Swagger docs available at http://${serverHost}:${port}/api/docs`);
+  console.log(`Environment: ${configService.get('NODE_ENV')}`);
 }
 
 bootstrap();

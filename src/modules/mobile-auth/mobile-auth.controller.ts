@@ -55,4 +55,12 @@ export class MobileAuthController {
   updateProfile(@Request() req: any, @Body() data: any) {
     return this.mobileAuthService.updateProfile(req.user.id, req.user.role, data);
   }
+
+  @Post('logout')
+  @UseGuards(MobileJwtGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout user' })
+  logout(@Request() req: any) {
+    return this.mobileAuthService.logout(req.user.id, req.user.role);
+  }
 }

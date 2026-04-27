@@ -19,6 +19,15 @@ export class Notification {
   message: string;
 
   @Column({ nullable: true })
+  userId: string;
+
+  @Column({ type: 'text', nullable: true })
+  body: string;
+
+  @Column({ nullable: true })
+  type: string;
+
+  @Column({ nullable: true })
   targetRole: string;
 
   @Column({ type: 'simple-array', nullable: true })
@@ -36,6 +45,9 @@ export class Notification {
 
   @Column({ nullable: true })
   sentAt: Date;
+
+  @Column({ nullable: true })
+  readAt: Date;
 
   @Column({ default: 0 })
   totalSent: number;

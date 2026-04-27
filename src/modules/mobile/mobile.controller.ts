@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Query,
@@ -26,6 +27,12 @@ export class MobileController {
   @ApiOperation({ summary: 'Get all active products for app' })
   getProducts(@Query('category') category?: string) {
     return this.mobileService.getProducts(category);
+  }
+
+  @Get('products/categories')
+  @ApiOperation({ summary: 'Get all product categories for app' })
+  getProductCategories() {
+    return this.mobileService.getProductCategories();
   }
 
   @Get('banners')
@@ -145,5 +152,115 @@ export class MobileController {
   @ApiOperation({ summary: 'Get public app settings (maintenance mode, support info)' })
   getAppSettings() {
     return this.mobileService.getAppSettings();
+  }
+
+  @Get('festival/theme')
+  @ApiOperation({ summary: 'Get active festival theme for app' })
+  getFestivalTheme(@Query('timezone') timezone?: string) {
+    return this.mobileService.getFestivalTheme(timezone);
+  }
+
+  // ── Wallet operations ───────────────────────────────────────────────
+
+  @Post('wallet/bank-account')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Save bank account details' })
+  saveBankAccount(@Request() req: any, @Body() body: any) {
+    return this.mobileService.saveBankAccount(req.user.id, req.user.role, body);
+  }
+
+  @Post('wallet/redeem')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Redeem reward' })
+  redeemReward(@Request() req: any, @Body() body: { schemeId: string; note?: string }) {
+    return this.mobileService.redeemReward(req.user.id, req.user.role, body);
+  }
+
+  @Post('wallet/transfer')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Transfer points to another user' })
+  transferPoints(@Request() req: any, @Body() body: { receiverPhone: string; points: number }) {
+    return this.mobileService.transferPoints(req.user.id, req.user.role, body);
+  }
+
+  @Get('wallet/dealer-bonus')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get dealer bonus info' })
+  getDealerBonus(@Request() req: any) {
+    return this.mobileService.getDealerBonus(req.user.id);
+  }
+
+  @Post('wallet/dealer-bonus/withdrawals')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Request dealer bonus withdrawal' })
+  requestDealerBonusWithdrawal(@Request() req: any, @Body() body: { amount: number }) {
+    return this.mobileService.requestDealerBonusWithdrawal(req.user.id, body.amount);
+  }
+
+  // ── Profile operations ──────────────────────────────────────────────
+
+  @Patch('profile/photo')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Upload profile photo' })
+  uploadProfilePhoto(@Request() req: any, @Body() body: { profileImage: string; source?: string }) {
+    return this.mobileService.uploadProfilePhoto(req.user.id, req.user.role, body.profileImage, body.source);
+  }
+
+  @Delete('profile/photo')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Remove profile photo' })
+  removeProfilePhoto(@Request() req: any) {
+    return this.mobileService.removeProfilePhoto(req.user.id, req.user.role);
+  }
+
+  @Patch('profile/password')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Change password' })
+  changePassword(@Request() req: any, @Body() body: { currentPassword?: string; newPassword: string }) {
+    return this.mobileService.changePassword(req.user.id, req.user.role, body);
+  }
+
+  // ── Support ─────────────────────────────────────────────────────────
+
+  @Post('support')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Submit support ticket' })
+  createSupportTicket(@Request() req: any, @Body() body: { subject: string; comment: string; photoUrl?: string }) {
+    return this.mobileService.createSupportTicket(req.user.id, req.user.role, body);
+  }
+
+  // ── Rating ──────────────────────────────────────────────────────────
+
+  @Post('rating')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Submit app rating' })
+  submitRating(@Request() req: any, @Body() body: { rating: number; review?: string }) {
+    return this.mobileService.submitRating(req.user.id, req.user.role, body.rating, body.review);
+  }
+
+  @Get('rating')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get my app rating' })
+  getMyRating(@Request() req: any) {
+    return this.mobileService.getMyRating(req.user.id);
+  }
+
+  // ── Reward schemes ──────────────────────────────────────────────────
+
+  @Get('reward-schemes')
+  @ApiOperation({ summary: 'Get reward schemes' })
+  getRewardSchemes(@Query('category') category?: string) {
+    return this.mobileService.getRewardSchemes(category);
   }
 }

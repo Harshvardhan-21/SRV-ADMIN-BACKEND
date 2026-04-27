@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../../database/entities/product.entity';
+import { ProductCategory } from '../../database/entities/product-category.entity';
 import { Banner } from '../../database/entities/banner.entity';
 import { Notification } from '../../database/entities/notification.entity';
 import { Offer } from '../../database/entities/offer.entity';
@@ -18,6 +19,10 @@ import { Electrician } from '../../database/entities/electrician.entity';
 import { Dealer } from '../../database/entities/dealer.entity';
 import { Redemption } from '../../database/entities/redemption.entity';
 import { Settings } from '../../database/entities/settings.entity';
+import { Festival } from '../../database/entities/festival.entity';
+import { SupportTicket } from '../../database/entities/support-ticket.entity';
+import { AppRating } from '../../database/entities/app-rating.entity';
+import { RewardScheme } from '../../database/entities/reward-scheme.entity';
 import { UserRole, ScanMode } from '../../common/enums';
 
 @Injectable()
@@ -25,6 +30,8 @@ export class MobileService {
   constructor(
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(ProductCategory)
+    private productCategoryRepository: Repository<ProductCategory>,
     @InjectRepository(Banner)
     private bannerRepository: Repository<Banner>,
     @InjectRepository(Notification)
@@ -47,6 +54,14 @@ export class MobileService {
     private redemptionRepository: Repository<Redemption>,
     @InjectRepository(Settings)
     private settingsRepository: Repository<Settings>,
+    @InjectRepository(Festival)
+    private festivalRepository: Repository<Festival>,
+    @InjectRepository(SupportTicket)
+    private supportTicketRepository: Repository<SupportTicket>,
+    @InjectRepository(AppRating)
+    private appRatingRepository: Repository<AppRating>,
+    @InjectRepository(RewardScheme)
+    private rewardSchemeRepository: Repository<RewardScheme>,
   ) {}
 
   async getProducts(category?: string) {
@@ -63,12 +78,62 @@ export class MobileService {
     return { data: products };
   }
 
-  async getBanners(role?: string) {
-    const where: any = { isActive: true };
-    const banners = await this.bannerRepository.find({
-      where,
-      order: { displayOrder: 'ASC', order: 'ASC' },
+  async getProductCategories() {
+    // Get distinct categories from products table
+    const products = await this.productRepository
+      .createQueryBuilder('product')
+      .select('product.category', 'category')
+      .addSelect('COUNT(product.id)', 'count')
+      .where('product.isActive = :isActive', { isActive: true })
+      .groupBy('product.category')
+      .getRawMany();
+
+    // Also get from product_categories table if it has entries
+    const dbCategories = await this.productCategoryRepository.find({
+      where: { isActive: true },
+      order: { sortOrder: 'ASC' },
     });
+
+    if (dbCategories.length > 0) {
+      const data = dbCategories.map((cat) => {
+        const productCount = products.find((p) => p.category === cat.label.toLowerCase().replace(/\s+/g, ''))?.count ?? 0;
+        return {
+          id: cat.id,
+          categoryId: cat.label.toLowerCase().replace(/\s+/g, ''),
+          label: cat.label,
+          glyph: cat.glyph,
+          imageUrl: cat.imageUrl,
+          productCount: parseInt(productCount, 10),
+        };
+      });
+      return { data };
+    }
+
+    // Fallback: derive categories from products
+    const data = products.map((p) => ({
+      id: p.category,
+      categoryId: p.category,
+      label: p.category.charAt(0).toUpperCase() + p.category.slice(1),
+      productCount: parseInt(p.count, 10),
+    }));
+    return { data };
+  }
+
+  async getBanners(role?: string) {
+    const qb = this.bannerRepository
+      .createQueryBuilder('banner')
+      .where('banner.isActive = :isActive', { isActive: true })
+      .andWhere("(banner.status IS NULL OR banner.status <> 'inactive')");
+
+    if (role) {
+      qb.andWhere(
+        '(banner.targetRole IS NULL OR banner.targetRole = \'\' OR banner.targetRole ILIKE :role)',
+        { role: `%${role}%` },
+      );
+    }
+
+    qb.orderBy('banner.displayOrder', 'ASC').addOrderBy('banner.order', 'ASC');
+    const banners = await qb.getMany();
     return { data: banners };
   }
 
@@ -77,7 +142,23 @@ export class MobileService {
       .createQueryBuilder('notification')
       .where('notification.status = :status', { status: 'sent' });
 
-    // Just return all sent notifications, no role filter
+    if (role) {
+      qb.andWhere(
+        '(notification.targetRole IS NULL OR notification.targetRole = :role)',
+        { role },
+      );
+    }
+
+    if (userId) {
+      qb.andWhere(
+        '(notification.userId IS NULL OR notification.userId = :userId OR notification.targetUserIds IS NULL OR notification.targetUserIds LIKE :userIdPattern)',
+        {
+          userId,
+          userIdPattern: `%${userId}%`,
+        },
+      );
+    }
+
     qb.orderBy('notification.sentAt', 'DESC').take(50);
     const notifications = await qb.getMany();
     return { data: notifications };
@@ -97,13 +178,20 @@ export class MobileService {
   }
 
   async getMaintenanceMode() {
-    const setting = await this.settingsRepository.findOne({
-      where: { key: 'maintenanceMode' },
+    const rows = await this.settingsRepository.find({
+      where: [{ key: 'maintenanceMode' }, { key: 'maintenanceMessage' }],
+    });
+    const map: Record<string, string> = {};
+    rows.forEach((row) => {
+      map[row.key] = row.value;
     });
 
     return {
-      maintenanceMode: setting?.value === 'true',
-      message: setting?.value === 'true' ? 'App is under maintenance' : 'All systems operational',
+      maintenanceMode: map.maintenanceMode === 'true',
+      message:
+        map.maintenanceMode === 'true'
+          ? (map.maintenanceMessage ?? 'App is under maintenance. Please try again later.')
+          : 'All systems operational',
     };
   }
 
@@ -412,6 +500,290 @@ export class MobileService {
       scanEnabled: map['scanEnabled'] !== 'false',
       giftsEnabled: map['giftsEnabled'] !== 'false',
       referralEnabled: map['referralEnabled'] !== 'false',
+    };
+  }
+
+  // ── New methods ────────────────────────────────────────────────────
+
+  async saveBankAccount(userId: string, role: string, body: any) {
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, {
+        upiId: body.upiId,
+        bankAccount: body.accountNumber,
+        ifsc: body.ifsc,
+        bankName: body.bankName,
+        accountHolderName: body.accountHolderName,
+        bankLinked: true,
+      } as any);
+    } else {
+      await this.dealerRepository.update(userId, {
+        upiId: body.upiId,
+        bankAccount: body.accountNumber,
+        ifsc: body.ifsc,
+        bankName: body.bankName,
+        accountHolderName: body.accountHolderName,
+        bankLinked: true,
+      } as any);
+    }
+    return { message: 'Bank account saved successfully' };
+  }
+
+  async redeemReward(userId: string, role: string, body: { schemeId: string; note?: string }) {
+    const scheme = await this.rewardSchemeRepository.findOne({ where: { id: body.schemeId } });
+    if (!scheme) throw new NotFoundException('Reward scheme not found');
+
+    let user: any;
+    if (role === 'electrician') {
+      user = await this.electricianRepository.findOne({ where: { id: userId } });
+    } else {
+      user = await this.dealerRepository.findOne({ where: { id: userId } });
+    }
+    if (!user) throw new NotFoundException('User not found');
+
+    const currentPoints = user.totalPoints ?? user.walletBalance ?? 0;
+    if (currentPoints < scheme.pointsCost) {
+      throw new BadRequestException('Insufficient points');
+    }
+
+    const redemption = this.redemptionRepository.create({
+      userId,
+      userName: 'User',
+      role: role === 'electrician' ? UserRole.ELECTRICIAN : UserRole.DEALER,
+      type: scheme.category,
+      schemeId: body.schemeId,
+      points: scheme.pointsCost,
+      amount: scheme.mrp ?? 0,
+      status: 'pending' as any,
+      note: body.note,
+    });
+    await this.redemptionRepository.save(redemption);
+
+    // Deduct points
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, {
+        totalPoints: Math.max(0, currentPoints - scheme.pointsCost),
+        walletBalance: Math.max(0, (user.walletBalance ?? 0) - scheme.pointsCost),
+      } as any);
+    }
+
+    return { message: 'Redemption request submitted', redemption };
+  }
+
+  async transferPoints(userId: string, role: string, body: { receiverPhone: string; points: number }) {
+    const receiver = await this.electricianRepository.findOne({ where: { phone: body.receiverPhone } });
+    if (!receiver) throw new NotFoundException('Receiver not found');
+
+    let sender: any;
+    if (role === 'electrician') {
+      sender = await this.electricianRepository.findOne({ where: { id: userId } });
+    }
+    if (!sender) throw new NotFoundException('Sender not found');
+
+    if ((sender.totalPoints ?? 0) < body.points) {
+      throw new BadRequestException('Insufficient points');
+    }
+
+    await this.electricianRepository.update(userId, {
+      totalPoints: (sender.totalPoints ?? 0) - body.points,
+      walletBalance: Math.max(0, (sender.walletBalance ?? 0) - body.points),
+    } as any);
+
+    await this.electricianRepository.update(receiver.id, {
+      totalPoints: (receiver.totalPoints ?? 0) + body.points,
+      walletBalance: (receiver.walletBalance ?? 0) + body.points,
+    } as any);
+
+    return { message: `${body.points} points transferred to ${receiver.name}` };
+  }
+
+  async getDealerBonus(dealerId: string) {
+    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
+    if (!dealer) throw new NotFoundException('Dealer not found');
+
+    // Calculate 5% of total electrician points as dealer bonus
+    const electricians = await this.electricianRepository.find({ where: { dealerId } });
+    const totalElectricianPoints = electricians.reduce((sum, e) => sum + (e.totalPoints ?? 0), 0);
+    const availableBonus = Math.floor(totalElectricianPoints * 0.05);
+
+    return {
+      availableBonus,
+      totalBonus: availableBonus,
+      pendingWithdrawals: 0,
+    };
+  }
+
+  async requestDealerBonusWithdrawal(dealerId: string, amount: number) {
+    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
+    if (!dealer) throw new NotFoundException('Dealer not found');
+
+    const redemption = this.redemptionRepository.create({
+      userId: dealerId,
+      userName: dealer.name,
+      role: UserRole.DEALER,
+      type: 'dealer_bonus',
+      points: 0,
+      amount,
+      status: 'pending' as any,
+    });
+    await this.redemptionRepository.save(redemption);
+
+    return { message: 'Withdrawal request submitted', redemption };
+  }
+
+  async uploadProfilePhoto(userId: string, role: string, base64DataUri: string, source = 'upload') {
+    // Store base64 image URL directly (in production, upload to S3/CDN)
+    const profileImage = base64DataUri;
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, { profileImage } as any);
+    } else {
+      await this.dealerRepository.update(userId, { profileImage } as any);
+    }
+    return { profileImage };
+  }
+
+  async removeProfilePhoto(userId: string, role: string) {
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, { profileImage: null } as any);
+    } else {
+      await this.dealerRepository.update(userId, { profileImage: null } as any);
+    }
+    return { removed: true };
+  }
+
+  async changePassword(userId: string, role: string, body: { currentPassword?: string; newPassword: string }) {
+    // Password change — store hashed password
+    const bcrypt = await import('bcrypt');
+    const hash = await bcrypt.hash(body.newPassword, 10);
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, { passwordHash: hash } as any);
+    } else {
+      await this.dealerRepository.update(userId, { passwordHash: hash } as any);
+    }
+    return { message: 'Password updated successfully' };
+  }
+
+  async createSupportTicket(userId: string, role: string, body: { subject: string; comment: string; photoUrl?: string }) {
+    let userName = 'Unknown';
+    if (role === 'electrician') {
+      const user = await this.electricianRepository.findOne({ where: { id: userId } });
+      userName = user?.name ?? 'Unknown';
+    } else {
+      const user = await this.dealerRepository.findOne({ where: { id: userId } });
+      userName = user?.name ?? 'Unknown';
+    }
+
+    const ticket = this.supportTicketRepository.create({
+      userId,
+      userName,
+      userRole: role === 'electrician' ? UserRole.ELECTRICIAN : UserRole.DEALER,
+      subject: body.subject,
+      message: body.comment,
+      photoUrl: body.photoUrl,
+    });
+    await this.supportTicketRepository.save(ticket);
+    return { message: 'Support ticket created', ticket };
+  }
+
+  async submitRating(userId: string, role: string, rating: number, review?: string) {
+    const userRole = role === 'electrician' ? UserRole.ELECTRICIAN : UserRole.DEALER;
+    const existing = await this.appRatingRepository.findOne({ where: { userId, userRole } });
+    if (existing) {
+      await this.appRatingRepository.update(existing.id, { rating, review });
+      return { id: existing.id, rating, review };
+    }
+    const newRating = this.appRatingRepository.create({ userId, userRole, rating, review });
+    const saved = await this.appRatingRepository.save(newRating);
+    return { id: saved.id, rating, review };
+  }
+
+  async getMyRating(userId: string) {
+    const rating = await this.appRatingRepository.findOne({ where: { userId } });
+    if (!rating) return null;
+    return { id: rating.id, rating: rating.rating, review: rating.review };
+  }
+
+  async getRewardSchemes(category?: string) {
+    const qb = this.rewardSchemeRepository
+      .createQueryBuilder('scheme')
+      .where('scheme.active = :active', { active: true });
+    if (category) {
+      qb.andWhere('scheme.category = :category', { category });
+    }
+    qb.orderBy('scheme.sortOrder', 'ASC');
+    const data = await qb.getMany();
+    return { data };
+  }
+
+  async getFestivalTheme(timezone?: string) {
+    const tz = timezone ?? 'Asia/Kolkata';
+    const now = new Date();
+    // Get current date string in YYYY-MM-DD in the given timezone
+    const currentDate = now.toLocaleDateString('en-CA', { timeZone: tz }); // en-CA gives YYYY-MM-DD
+
+    const festivals = await this.festivalRepository.find({
+      where: { active: true },
+      order: { startDate: 'ASC' },
+    });
+
+    const festival = festivals.find((f) => {
+      const start = f.startDate ? String(f.startDate).slice(0, 10) : null;
+      const end = f.endDate ? String(f.endDate).slice(0, 10) : null;
+      if (!start || !end) return false;
+      return currentDate >= start && currentDate <= end;
+    });
+
+    if (!festival) {
+      return {
+        active: false,
+        source: 'none',
+        timezone: tz,
+        currentDate,
+        serverTime: now.toISOString(),
+        id: null,
+        name: null,
+        slug: null,
+        greeting: null,
+        subGreeting: null,
+        emoji: null,
+        bannerEmojis: '',
+        particleEmojis: '',
+        theme: {
+          primaryColor: '#E8453C',
+          secondaryColor: '#FF6B5B',
+          accentColor: '#FFFFFF',
+          bgColor: '#FFF5F5',
+          cardColor: '#FFFFFF',
+          textColor: '#1A1A1A',
+        },
+        startDate: null,
+        endDate: null,
+      };
+    }
+
+    return {
+      active: true,
+      source: 'festival',
+      timezone: tz,
+      currentDate,
+      serverTime: now.toISOString(),
+      id: festival.id,
+      name: festival.name,
+      slug: festival.slug,
+      greeting: festival.greeting,
+      subGreeting: festival.subGreeting,
+      emoji: festival.emoji,
+      bannerEmojis: festival.bannerEmojis ?? '',
+      particleEmojis: festival.particleEmojis ?? '',
+      theme: {
+        primaryColor: festival.primaryColor,
+        secondaryColor: festival.secondaryColor,
+        accentColor: festival.accentColor,
+        bgColor: festival.bgColor,
+        cardColor: festival.cardColor,
+        textColor: festival.textColor,
+      },
+      startDate: festival.startDate,
+      endDate: festival.endDate,
     };
   }
 }
