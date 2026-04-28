@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   Param,
   UseGuards,
   Query,
@@ -55,6 +56,13 @@ export class RedemptionController {
     @Body('rejectionReason') rejectionReason: string,
     @CurrentUser('id') adminId: string,
   ) {
-    return this.redemptionService.reject(id, rejectionReason, adminId);
+    return this.redemptionService.reject(id, rejectionReason || 'Rejected by admin', adminId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete redemption record' })
+  @ApiResponse({ status: 200, description: 'Redemption deleted successfully' })
+  remove(@Param('id') id: string) {
+    return this.redemptionService.remove(id);
   }
 }

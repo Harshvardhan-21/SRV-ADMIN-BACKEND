@@ -17,10 +17,14 @@ export class TestimonialService {
     return this.testimonialRepository.save(testimonial);
   }
 
-  async findAll() {
+  async findAll(userCategory?: string) {
+    const where: any = {};
+    if (userCategory && userCategory !== 'all') {
+      where.userCategory = userCategory;
+    }
     return this.testimonialRepository.find({
-      where: { isActive: true },
-      order: { createdAt: 'DESC' },
+      where: Object.keys(where).length ? where : undefined,
+      order: { displayOrder: 'ASC', createdAt: 'DESC' },
     });
   }
 

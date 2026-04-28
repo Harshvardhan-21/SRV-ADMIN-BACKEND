@@ -6,9 +6,10 @@ export class CreateBannerDto {
   @IsString()
   title: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  imageUrl: string;
+  imageUrl?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

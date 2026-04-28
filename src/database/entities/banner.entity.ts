@@ -29,7 +29,7 @@ export class Banner {
   @Column({ default: 0 })
   displayOrder: number;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   targetRole: string[];
 
   @Column({ nullable: true })

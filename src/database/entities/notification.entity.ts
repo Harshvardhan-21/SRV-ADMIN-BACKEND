@@ -21,7 +21,7 @@ export class Notification {
   @Column({ nullable: true })
   targetRole: string;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   targetUserIds: string[];
 
   @Column({

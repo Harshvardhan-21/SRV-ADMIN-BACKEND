@@ -32,7 +32,7 @@ export class Testimonial {
   @Column({ nullable: true })
   highlight: string;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', array: true, nullable: true })
   gradientColors: string[];
 
   @Column({ nullable: true })

@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { TestimonialService } from './testimonial.service';
@@ -31,8 +32,8 @@ export class TestimonialController {
   @Get()
   @ApiOperation({ summary: 'Get all testimonials' })
   @ApiResponse({ status: 200, description: 'List of testimonials' })
-  findAll() {
-    return this.testimonialService.findAll();
+  findAll(@Query('userCategory') userCategory?: string) {
+    return this.testimonialService.findAll(userCategory);
   }
 
   @Get(':id')

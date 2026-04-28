@@ -42,18 +42,18 @@ export class BannerController {
     return this.bannerService.findOne(id);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update banner' })
-  @ApiResponse({ status: 200, description: 'Banner updated successfully' })
-  update(@Param('id') id: string, @Body() updateBannerDto: UpdateBannerDto) {
-    return this.bannerService.update(id, updateBannerDto);
-  }
-
   @Patch('reorder')
   @ApiOperation({ summary: 'Reorder banners' })
   @ApiResponse({ status: 200, description: 'Banners reordered successfully' })
   reorder(@Body() bannerOrders: { id: string; order: number }[]) {
     return this.bannerService.reorder(bannerOrders);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update banner' })
+  @ApiResponse({ status: 200, description: 'Banner updated successfully' })
+  update(@Param('id') id: string, @Body() updateBannerDto: UpdateBannerDto) {
+    return this.bannerService.update(id, updateBannerDto);
   }
 
   @Delete(':id')

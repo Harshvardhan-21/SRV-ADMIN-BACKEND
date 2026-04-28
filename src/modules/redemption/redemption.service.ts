@@ -84,17 +84,21 @@ export class RedemptionService {
       throw new BadRequestException('Only pending redemptions can be rejected');
     }
 
-    if (!rejectionReason?.trim()) {
-      throw new BadRequestException('Rejection reason is required');
-    }
+    const reason = rejectionReason?.trim() || 'Rejected by admin';
 
     await this.redemptionRepository.update(id, {
       status: RedemptionStatus.REJECTED,
-      rejectionReason,
+      rejectionReason: reason,
       processedBy: adminId,
       processedAt: new Date(),
     });
 
     return this.findOne(id);
+  }
+
+  async remove(id: string) {
+    const redemption = await this.findOne(id);
+    await this.redemptionRepository.remove(redemption);
+    return { message: 'Redemption deleted successfully' };
   }
 }
