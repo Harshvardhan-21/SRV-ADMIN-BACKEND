@@ -40,8 +40,9 @@ export class ElectricianController {
     @Query('status') status?: UserStatus,
     @Query('tier') tier?: MemberTier,
     @Query('state') state?: string,
+    @Query('dealerId') dealerId?: string,
   ) {
-    return this.electricianService.findAll(parseInt(page), parseInt(limit), search, status, tier, state);
+    return this.electricianService.findAll(parseInt(page), parseInt(limit), search, status, tier, state, dealerId);
   }
 
   @Get('tier-counts')

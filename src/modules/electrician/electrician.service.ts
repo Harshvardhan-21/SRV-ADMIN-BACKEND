@@ -60,6 +60,7 @@ export class ElectricianService {
     status?: UserStatus,
     tier?: MemberTier,
     state?: string,
+    dealerId?: string,
   ) {
     const skip = (page - 1) * limit;
     const queryBuilder = this.electricianRepository
@@ -83,6 +84,10 @@ export class ElectricianService {
 
     if (state) {
       queryBuilder.andWhere('electrician.state = :state', { state });
+    }
+
+    if (dealerId) {
+      queryBuilder.andWhere('electrician.dealerId = :dealerId', { dealerId });
     }
 
     queryBuilder
