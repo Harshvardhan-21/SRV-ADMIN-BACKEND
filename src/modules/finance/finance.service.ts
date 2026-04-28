@@ -103,14 +103,14 @@ export class FinanceService {
 
   async getDealerBonus() {
     const dealers = await this.dealerRepository.find({
-      select: ['id', 'name', 'phone', 'walletBalance', 'monthlyTarget', 'achievedTarget', 'electricianCount'],
+      select: ['id', 'name', 'phone', 'walletBalance', 'monthlyTarget', 'achievedTarget', 'electricianCount', 'bonusStatus'],
     });
 
     const bonusData = dealers.map(dealer => ({
       ...dealer,
       bonusEligible: (dealer.achievedTarget || 0) >= (dealer.monthlyTarget || 0),
       bonusAmount: Math.max(0, (dealer.achievedTarget || 0) - (dealer.monthlyTarget || 0)) * 0.1,
-      bonusStatus: 'pending',
+      bonusStatus: dealer.bonusStatus || 'pending',
     }));
 
     return {
@@ -255,10 +255,38 @@ export class FinanceService {
       await this.walletRepository.save(transaction);
       await this.dealerRepository.update(dealerId, {
         walletBalance: (dealer.walletBalance || 0) + bonusAmount,
+        bonusStatus: 'paid',
       });
+    } else {
+      await this.dealerRepository.update(dealerId, { bonusStatus: 'paid' });
     }
 
     return { message: 'Dealer bonus marked as paid', dealerId, bonusAmount };
+  }
+
+  async updateDealerBonus(
+    dealerId: string,
+    data: { achievedTarget?: number; electricianCount?: number; bonusStatus?: string; month?: string; year?: number },
+  ) {
+    const dealer = await this.dealerRepository.findOne({ where: { id: dealerId } });
+    if (!dealer) throw new Error('Dealer not found');
+
+    const updatePayload: Partial<typeof dealer> = {};
+    if (data.achievedTarget !== undefined) updatePayload.achievedTarget = data.achievedTarget;
+    if (data.electricianCount !== undefined) updatePayload.electricianCount = data.electricianCount;
+    if (data.bonusStatus !== undefined) (updatePayload as any).bonusStatus = data.bonusStatus;
+
+    await this.dealerRepository.update(dealerId, updatePayload as any);
+    const updated = await this.dealerRepository.findOne({ where: { id: dealerId } });
+
+    return {
+      message: 'Dealer bonus updated successfully',
+      dealer: {
+        ...updated,
+        bonusAmount: Math.max(0, ((updated?.achievedTarget || 0) as number) - ((updated?.monthlyTarget || 0) as number)) * 0.1,
+        bonusStatus: (updated as any)?.bonusStatus || 'pending',
+      },
+    };
   }
 
   async bulkMarkDealerBonusPaid(dealerIds: string[], adminId: string) {

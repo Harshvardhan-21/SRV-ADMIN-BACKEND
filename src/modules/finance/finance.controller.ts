@@ -103,6 +103,16 @@ export class FinanceController {
     return this.financeService.markDealerBonusPaid(dealerId, adminId);
   }
 
+  @Patch('dealer-bonus/:dealerId')
+  @ApiOperation({ summary: 'Update dealer bonus record' })
+  @ApiResponse({ status: 200, description: 'Dealer bonus updated successfully' })
+  updateDealerBonus(
+    @Param('dealerId') dealerId: string,
+    @Body() body: { achievedTarget?: number; electricianCount?: number; bonusStatus?: string; month?: string; year?: number },
+  ) {
+    return this.financeService.updateDealerBonus(dealerId, body);
+  }
+
   @Post('dealer-bonus/bulk-mark-paid')
   @ApiOperation({ summary: 'Bulk mark dealer bonuses as paid' })
   @ApiResponse({ status: 200, description: 'Dealer bonuses marked as paid' })

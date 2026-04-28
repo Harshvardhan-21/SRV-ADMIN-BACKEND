@@ -122,6 +122,9 @@ export class Dealer {
   @Column({ default: 0 })
   walletBalance: number;
 
+  @Column({ default: 'pending' })
+  bonusStatus: string;
+
   @OneToMany(() => Electrician, (electrician) => electrician.dealer)
   electricians: Electrician[];
 

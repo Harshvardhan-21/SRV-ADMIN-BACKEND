@@ -22,6 +22,6 @@ export class Settings {
   @Column({ nullable: true })
   updatedBy: string;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
 }

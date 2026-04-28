@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UpdateSettingDto } from './dto/update-setting.dto';
@@ -51,6 +52,7 @@ export class SettingsService {
       });
     } else {
       const newSetting = this.settingsRepository.create({
+        id: randomUUID(),
         key,
         value,
         description,
