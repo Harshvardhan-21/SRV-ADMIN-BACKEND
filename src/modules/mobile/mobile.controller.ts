@@ -115,10 +115,18 @@ export class MobileController {
     return this.mobileService.getScanHistory(req.user.id, parseInt(page), parseInt(limit));
   }
 
+  @Get('electricians/call-list')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get call list of electricians for dealer' })
+  getDealerCallList(@Request() req: any) {
+    return this.mobileService.getDealerCallList(req.user.id);
+  }
+
   @Get('electricians')
   @UseGuards(MobileJwtGuard)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get electricians for dealer' })
+  @ApiOperation({ summary: 'Get electricians for current dealer' })
   getDealerElectricians(
     @Request() req: any,
     @Query('page') page = '1',
@@ -204,6 +212,14 @@ export class MobileController {
 
   // ── Profile operations ──────────────────────────────────────────────
 
+  @Get('profile/qr-code')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get user QR code' })
+  getUserQrCode(@Request() req: any) {
+    return this.mobileService.getUserQrCode(req.user.id, req.user.role);
+  }
+
   @Patch('profile/photo')
   @UseGuards(MobileJwtGuard)
   @ApiBearerAuth('JWT-auth')
@@ -236,6 +252,16 @@ export class MobileController {
   @ApiOperation({ summary: 'Submit support ticket' })
   createSupportTicket(@Request() req: any, @Body() body: { subject: string; comment: string; photoUrl?: string }) {
     return this.mobileService.createSupportTicket(req.user.id, req.user.role, body);
+  }
+
+  // ── Referral ─────────────────────────────────────────────────────────────
+
+  @Get('referral')
+  @UseGuards(MobileJwtGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get my referral code and share link' })
+  getMyReferral(@Request() req: any) {
+    return this.mobileService.getMyReferral(req.user.id, req.user.role);
   }
 
   // ── Rating ──────────────────────────────────────────────────────────

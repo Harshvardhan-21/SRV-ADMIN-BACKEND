@@ -2,7 +2,10 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
+  Param,
   UseGuards,
   Query,
 } from '@nestjs/common';
@@ -71,5 +74,42 @@ export class FinanceController {
     @CurrentUser('id') adminId: string,
   ) {
     return this.financeService.manualTransferPoints(body, adminId);
+  }
+
+  @Patch('transfer-points/:id/reverse')
+  @ApiOperation({ summary: 'Reverse a points transfer' })
+  @ApiResponse({ status: 200, description: 'Transfer reversed successfully' })
+  reverseTransfer(
+    @Param('id') id: string,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.financeService.reverseTransfer(id, adminId);
+  }
+
+  @Delete('transfer-points/:id')
+  @ApiOperation({ summary: 'Delete a points transfer record' })
+  @ApiResponse({ status: 200, description: 'Transfer deleted successfully' })
+  deleteTransfer(@Param('id') id: string) {
+    return this.financeService.deleteTransfer(id);
+  }
+
+  @Patch('dealer-bonus/:dealerId/mark-paid')
+  @ApiOperation({ summary: 'Mark dealer bonus as paid' })
+  @ApiResponse({ status: 200, description: 'Dealer bonus marked as paid' })
+  markDealerBonusPaid(
+    @Param('dealerId') dealerId: string,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.financeService.markDealerBonusPaid(dealerId, adminId);
+  }
+
+  @Post('dealer-bonus/bulk-mark-paid')
+  @ApiOperation({ summary: 'Bulk mark dealer bonuses as paid' })
+  @ApiResponse({ status: 200, description: 'Dealer bonuses marked as paid' })
+  bulkMarkDealerBonusPaid(
+    @Body() body: { dealerIds: string[] },
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.financeService.bulkMarkDealerBonusPaid(body.dealerIds, adminId);
   }
 }

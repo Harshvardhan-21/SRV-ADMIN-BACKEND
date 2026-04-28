@@ -44,6 +44,13 @@ export class DealerController {
     return this.dealerService.findAll(parseInt(page), parseInt(limit), search, status, tier, state);
   }
 
+  @Get('stats')
+  @ApiOperation({ summary: 'Get dealer stats (total, active, pending counts)' })
+  @ApiResponse({ status: 200, description: 'Dealer stats' })
+  getStats() {
+    return this.dealerService.getStats();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get dealer by ID' })
   @ApiResponse({ status: 200, description: 'Dealer details' })

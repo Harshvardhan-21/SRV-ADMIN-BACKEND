@@ -112,7 +112,22 @@ async function bootstrap() {
 
   const port = Number(configService.get('PORT') || 3003);
   const serverHost = configService.get('SERVER_HOST') || 'localhost';
-  await app.listen(port, '0.0.0.0');
+  try {
+    await app.listen(port, '0.0.0.0');
+  } catch (error: any) {
+    if (error?.code === 'EADDRINUSE') {
+      console.error(
+        `Port ${port} is already in use. An SRV backend or another process is already running on this port.`,
+      );
+      console.error(
+        `Stop the existing process on port ${port}, or change PORT in .env before starting another backend instance.`,
+      );
+      await app.close();
+      return;
+    }
+    await app.close();
+    throw error;
+  }
 
   console.log(`SRV Admin backend running at http://${serverHost}:${port}`);
   console.log(`Swagger docs available at http://${serverHost}:${port}/api/docs`);

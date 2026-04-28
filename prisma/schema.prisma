@@ -98,6 +98,14 @@ enum SupportTicketStatus {
   closed
 }
 
+enum GiftOrderStatus {
+  pending
+  approved
+  shipped
+  delivered
+  rejected
+}
+
 enum SupportTicketPriority {
   low
   medium
@@ -433,4 +441,27 @@ model PointsConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("points_config")
+}
+
+model GiftOrder {
+  id               String          @id @default(uuid())
+  userId           String
+  userName         String
+  userCode         String?
+  dealerName       String?
+  role             UserRole
+  giftProductId    String
+  giftName         String
+  giftImage        String?
+  pointsUsed       Int             @default(0)
+  status           GiftOrderStatus @default(pending)
+  rejectionReason  String?
+  processedBy      String?
+  processedAt      DateTime?
+  shippingAddress  String?
+  trackingNumber   String?
+  orderedAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@map("gift_orders")
 }

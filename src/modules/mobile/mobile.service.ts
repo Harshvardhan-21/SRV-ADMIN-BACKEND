@@ -23,7 +23,10 @@ import { Festival } from '../../database/entities/festival.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { AppRating } from '../../database/entities/app-rating.entity';
 import { RewardScheme } from '../../database/entities/reward-scheme.entity';
+import { UserProfileImage } from '../../database/entities/user-profile-image.entity';
+import { UserQrCode } from '../../database/entities/user-qr-code.entity';
 import { UserRole, ScanMode } from '../../common/enums';
+import { TierService } from '../../common/services/tier.service';
 
 @Injectable()
 export class MobileService {
@@ -62,61 +65,204 @@ export class MobileService {
     private appRatingRepository: Repository<AppRating>,
     @InjectRepository(RewardScheme)
     private rewardSchemeRepository: Repository<RewardScheme>,
+    @InjectRepository(UserProfileImage)
+    private userProfileImageRepository: Repository<UserProfileImage>,
+    @InjectRepository(UserQrCode)
+    private userQrCodeRepository: Repository<UserQrCode>,
+    private readonly tierService: TierService,
   ) {}
 
+  private toUserRole(role: string) {
+    return role === 'dealer' ? UserRole.DEALER : UserRole.ELECTRICIAN;
+  }
+
+  private detectImageMimeType(imageData: string) {
+    if (imageData.startsWith('data:image/png')) return 'image/png';
+    if (imageData.startsWith('data:image/webp')) return 'image/webp';
+    if (imageData.startsWith('data:image/gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  private normalizeCategoryKey(value?: string | null) {
+    const raw = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '');
+
+    const aliases: Record<string, string> = {
+      fan: 'fanbox',
+      fanboxs: 'fanbox',
+      fanboxes: 'fanbox',
+      fanrods: 'fanrods',
+      concealed: 'concealedbox',
+      concealedboxes: 'concealedbox',
+      concealedboxs: 'concealedbox',
+      modularswitchbox: 'modular',
+      modularbox: 'modular',
+      modularboxes: 'modular',
+      modularplate: 'modular',
+      modularboxdrawpc: 'modular',
+      moduleboxdrawgp: 'modular',
+      moduleboxecomspc: 'modular',
+      moduleboxecobr: 'modular',
+      moduleboxplatinumpc: 'modular',
+      moduleboxsuperpc: 'modular',
+      mcbbox: 'mcb',
+      mcbboxes: 'mcb',
+      drawtpnmcbbox: 'mcb',
+      drawspnmcbbox: 'mcb',
+      ecospnddmcbbox: 'mcb',
+      gitpnmcbbox: 'mcb',
+      novaspnddmcbbox: 'mcb',
+      spnsdmcbbox: 'mcb',
+      surfacetypepvcmcb: 'mcb',
+      busbars: 'busbar',
+      busbarpremium: 'busbar',
+      busbarsuper: 'busbar',
+      exhaustfans: 'exhaust',
+      ledlight: 'led',
+      ledlights: 'led',
+      ledfloodlight: 'ledflood',
+      ledfloodlights: 'ledflood',
+      mainswitches: 'mainswitch',
+      mainswitchfuseunits: 'mainswitch',
+      knifetypechangeoverswitches: 'changeover',
+      louvers: 'louver',
+      multipins: 'multipin',
+      pintops: 'pintop',
+      pvcconduitpipe: 'pvcpipe',
+      pvcconduitbend: 'pvcbend',
+      pvccasingbatten: 'pvcbatten',
+      pvcjunctionbox: 'pvcjunctionbox',
+      junctionbox: 'junctionbox',
+      kitkatfuses: 'kitkat',
+      ventoguard: 'ventilation',
+    };
+
+    return aliases[raw] ?? raw;
+  }
+
+  private buildCategoryLabel(categoryKey: string, fallback?: string | null) {
+    const labels: Record<string, string> = {
+      fanbox: 'Fan Box',
+      concealedbox: 'Concealed Box',
+      modular: 'Modular Box',
+      mcb: 'MCB Box',
+      busbar: 'Bus Bar',
+      exhaust: 'Exhaust Fan',
+      led: 'LED Lights',
+      changeover: 'Changeover',
+      mainswitch: 'Main Switch',
+      fanrods: 'Fan Rods',
+      junctionbox: 'Junction Box',
+      pvcjunctionbox: 'PVC Junction Box',
+      louver: 'Louver',
+      axialfan: 'Axial Fan',
+      ledflood: 'LED Flood',
+      multipin: 'Multi Pin',
+      pintop: 'Pin Top',
+      kitkat: 'Kit Kat Fuse',
+      connector: 'Connector',
+      pvcpipe: 'PVC Pipe',
+      pvcbend: 'PVC Bend',
+      pvcbatten: 'PVC Batten',
+      ventilation: 'Ventilation Fan',
+      doorbell: 'Door Bell',
+      solarled: 'Solar LED',
+      streetled: 'Street LED',
+      warmer: 'Room Warmer',
+      heater: 'Heater',
+      autochangeover: 'Auto Changeover',
+      coversheet: 'Cover Sheet',
+    };
+
+    if (fallback?.trim()) return fallback.trim();
+    return labels[categoryKey] ?? categoryKey;
+  }
+
   async getProducts(category?: string) {
-    const qb = this.productRepository
-      .createQueryBuilder('product')
-      .where('product.isActive = :isActive', { isActive: true });
+    const requestedCategory = this.normalizeCategoryKey(category);
+    const [products, dbCategories] = await Promise.all([
+      this.productRepository.find({
+        where: { isActive: true },
+        order: { createdAt: 'DESC' },
+      }),
+      this.productCategoryRepository.find({
+        where: { isActive: true },
+        order: { sortOrder: 'ASC' },
+      }),
+    ]);
 
-    if (category) {
-      qb.andWhere('product.category = :category', { category });
-    }
+    const categoryMeta = new Map(
+      dbCategories.map((cat) => [this.normalizeCategoryKey(cat.label), cat]),
+    );
 
-    qb.orderBy('product.createdAt', 'DESC');
-    const products = await qb.getMany();
-    return { data: products };
+    const data = products
+      .map((product) => {
+        const categoryKey = this.normalizeCategoryKey(product.category);
+        const meta = categoryMeta.get(categoryKey);
+        return {
+          ...product,
+          category: categoryKey,
+          categoryId: categoryKey,
+          categoryLabel: this.buildCategoryLabel(categoryKey, meta?.label ?? product.category),
+          imageUrl: product.image ?? meta?.imageUrl ?? null,
+        };
+      })
+      .filter((product) => !requestedCategory || product.category === requestedCategory);
+
+    return { data };
   }
 
   async getProductCategories() {
-    // Get distinct categories from products table
-    const products = await this.productRepository
-      .createQueryBuilder('product')
-      .select('product.category', 'category')
-      .addSelect('COUNT(product.id)', 'count')
-      .where('product.isActive = :isActive', { isActive: true })
-      .groupBy('product.category')
-      .getRawMany();
+    const [products, dbCategories] = await Promise.all([
+      this.productRepository.find({ where: { isActive: true } }),
+      this.productCategoryRepository.find({
+        where: { isActive: true },
+        order: { sortOrder: 'ASC' },
+      }),
+    ]);
 
-    // Also get from product_categories table if it has entries
-    const dbCategories = await this.productCategoryRepository.find({
-      where: { isActive: true },
-      order: { sortOrder: 'ASC' },
+    const productCounts = new Map<string, number>();
+    const productCoverImages = new Map<string, string>();
+    products.forEach((product) => {
+      const key = this.normalizeCategoryKey(product.category);
+      productCounts.set(key, (productCounts.get(key) ?? 0) + 1);
+      if (!productCoverImages.has(key) && product.image) {
+        productCoverImages.set(key, product.image);
+      }
     });
 
-    if (dbCategories.length > 0) {
-      const data = dbCategories.map((cat) => {
-        const productCount = products.find((p) => p.category === cat.label.toLowerCase().replace(/\s+/g, ''))?.count ?? 0;
-        return {
-          id: cat.id,
-          categoryId: cat.label.toLowerCase().replace(/\s+/g, ''),
-          label: cat.label,
-          glyph: cat.glyph,
-          imageUrl: cat.imageUrl,
-          productCount: parseInt(productCount, 10),
-        };
-      });
-      return { data };
-    }
+    const categoryMap = new Map<string, any>();
 
-    // Fallback: derive categories from products
-    const data = products.map((p) => ({
-      id: p.category,
-      categoryId: p.category,
-      label: p.category.charAt(0).toUpperCase() + p.category.slice(1),
-      productCount: parseInt(p.count, 10),
-    }));
-    return { data };
+    dbCategories.forEach((cat) => {
+      const categoryKey = this.normalizeCategoryKey(cat.label);
+      categoryMap.set(categoryKey, {
+        id: cat.id,
+        categoryId: categoryKey,
+        slug: categoryKey,
+        label: cat.label,
+        glyph: cat.glyph,
+        imageUrl: cat.imageUrl ?? productCoverImages.get(categoryKey) ?? null,
+        productCount: productCounts.get(categoryKey) ?? 0,
+      });
+    });
+
+    productCounts.forEach((count, categoryKey) => {
+      if (categoryMap.has(categoryKey)) return;
+      categoryMap.set(categoryKey, {
+        id: categoryKey,
+        categoryId: categoryKey,
+        slug: categoryKey,
+        label: this.buildCategoryLabel(categoryKey),
+        glyph: null,
+        imageUrl: productCoverImages.get(categoryKey) ?? null,
+        productCount: count,
+      });
+    });
+
+    return { data: Array.from(categoryMap.values()) };
   }
 
   async getBanners(role?: string) {
@@ -303,12 +449,13 @@ export class MobileService {
     if (role === 'electrician' && user) {
       const newPoints = (user.totalPoints ?? 0) + points;
       const newScans = (user.totalScans ?? 0) + 1;
-      const newTier = this.calculateElectricianTier(newPoints);
+      const newWallet = (user.walletBalance ?? 0) + points;
+      const newTier = this.tierService.calculateElectricianTier(newPoints);
 
       await this.electricianRepository.update(userId, {
         totalPoints: newPoints,
         totalScans: newScans,
-        walletBalance: (user.walletBalance ?? 0) + points,
+        walletBalance: newWallet,
         tier: newTier as any,
         lastActivityAt: new Date(),
       });
@@ -321,7 +468,7 @@ export class MobileService {
         source: 'scan' as any,
         amount: points,
         balanceBefore: user.walletBalance ?? 0,
-        balanceAfter: (user.walletBalance ?? 0) + points,
+        balanceAfter: newWallet,
         description: `Scan: ${qr.product.name}`,
         referenceId: scan.id,
         referenceType: 'scan',
@@ -392,6 +539,75 @@ export class MobileService {
     };
   }
 
+  async getMyReferral(userId: string, role: string) {
+    let code: string | null = null;
+    if (role === 'electrician') {
+      const user = await this.electricianRepository.findOne({ where: { id: userId } });
+      code = user?.electricianCode ?? null;
+    } else {
+      const user = await this.dealerRepository.findOne({ where: { id: userId } });
+      code = user?.dealerCode ?? null;
+    }
+    return {
+      code: code ?? userId,
+      link: code ? `https://srvelectricals.com/join?ref=${code}` : null,
+      channels: ['whatsapp', 'sms', 'copy'],
+    };
+  }
+
+  async getUserQrCode(userId: string, role: string) {
+    const userRole = role === 'electrician' ? 'electrician' : 'dealer';
+    let qr = await this.userQrCodeRepository.findOne({ where: { userId } });
+
+    if (!qr) {
+      // Auto-generate QR code for user
+      let user: any;
+      if (role === 'electrician') {
+        user = await this.electricianRepository.findOne({ where: { id: userId } });
+      } else {
+        user = await this.dealerRepository.findOne({ where: { id: userId } });
+      }
+      const qrValue = role === 'electrician'
+        ? (user?.electricianCode ?? userId)
+        : (user?.dealerCode ?? userId);
+
+      qr = this.userQrCodeRepository.create({
+        userId,
+        userRole: userRole as any,
+        qrValue,
+        qrImageUrl: null,
+      });
+      qr = await this.userQrCodeRepository.save(qr);
+    }
+
+    return {
+      id: qr.id,
+      userId: qr.userId,
+      qrValue: qr.qrValue,
+      qrApiUrl: `https://quickchart.io/qr?text=${encodeURIComponent(qr.qrValue)}&size=220&margin=1`,
+      storedQrImageUrl: qr.qrImageUrl ?? null,
+      generatedAt: qr.generatedAt,
+    };
+  }
+
+  async getDealerCallList(dealerId: string) {
+    const electricians = await this.electricianRepository.find({
+      where: { dealerId, status: 'active' as any },
+      order: { name: 'ASC' },
+      take: 100,
+    });
+    return {
+      data: electricians.map((e) => ({
+        id: e.id,
+        name: e.name,
+        phone: e.phone,
+        whatsapp: `91${e.phone}`,
+        city: e.city ?? '',
+        status: e.status,
+      })),
+    };
+  }
+
   async getDealerElectricians(dealerId: string, page: number = 1, limit: number = 50, search?: string) {
     const skip = (page - 1) * limit;
     const qb = this.electricianRepository
@@ -432,10 +648,11 @@ export class MobileService {
         return { message: 'Electrician already in your network', electrician: existing };
       }
       // Link to this dealer
+      const oldDealerId = existing.dealerId;
       await this.electricianRepository.update(existing.id, { dealerId });
-      await this.dealerRepository.update(dealerId, {
-        electricianCount: (dealer.electricianCount ?? 0) + 1,
-      });
+      // Sync both old and new dealer tiers
+      if (oldDealerId) await this.tierService.syncDealerTier(oldDealerId);
+      await this.tierService.syncDealerTier(dealerId);
       return { message: 'Electrician linked to your network', electrician: existing };
     }
 
@@ -453,18 +670,10 @@ export class MobileService {
     });
 
     const saved = await this.electricianRepository.save(electrician);
-    await this.dealerRepository.update(dealerId, {
-      electricianCount: (dealer.electricianCount ?? 0) + 1,
-    });
+    // Sync dealer tier after adding electrician
+    await this.tierService.syncDealerTier(dealerId);
 
     return { message: 'Electrician added successfully', electrician: saved };
-  }
-
-  private calculateElectricianTier(points: number): string {
-    if (points >= 10000) return 'Diamond';
-    if (points >= 5001) return 'Platinum';
-    if (points >= 1001) return 'Gold';
-    return 'Silver';
   }
 
   async getRedemptionHistory(userId: string, page: number = 1, limit: number = 20) {
@@ -541,13 +750,24 @@ export class MobileService {
     if (!user) throw new NotFoundException('User not found');
 
     const currentPoints = user.totalPoints ?? user.walletBalance ?? 0;
+
+    // ── Minimum 100 points required to redeem ──────────────────────
+    const MIN_REDEEM_POINTS = 100;
+    if (currentPoints < MIN_REDEEM_POINTS) {
+      throw new BadRequestException(
+        `Minimum ${MIN_REDEEM_POINTS} points required to redeem. You have ${currentPoints} points.`
+      );
+    }
+
     if (currentPoints < scheme.pointsCost) {
-      throw new BadRequestException('Insufficient points');
+      throw new BadRequestException(
+        `Insufficient points. You need ${scheme.pointsCost} points but have ${currentPoints}.`
+      );
     }
 
     const redemption = this.redemptionRepository.create({
       userId,
-      userName: 'User',
+      userName: user.name ?? 'User',
       role: role === 'electrician' ? UserRole.ELECTRICIAN : UserRole.DEALER,
       type: scheme.category,
       schemeId: body.schemeId,
@@ -558,12 +778,43 @@ export class MobileService {
     });
     await this.redemptionRepository.save(redemption);
 
-    // Deduct points
+    // ── Deduct points from electrician ─────────────────────────────
     if (role === 'electrician') {
+      const newPoints = Math.max(0, currentPoints - scheme.pointsCost);
+      const newWallet = Math.max(0, (user.walletBalance ?? 0) - scheme.pointsCost);
       await this.electricianRepository.update(userId, {
-        totalPoints: Math.max(0, currentPoints - scheme.pointsCost),
-        walletBalance: Math.max(0, (user.walletBalance ?? 0) - scheme.pointsCost),
+        totalPoints: newPoints,
+        walletBalance: newWallet,
       } as any);
+
+      // ── 5% dealer bonus when electrician redeems ──────────────────
+      if (user.dealerId) {
+        const dealer = await this.dealerRepository.findOne({ where: { id: user.dealerId } });
+        if (dealer) {
+          const bonusPoints = Math.floor(scheme.pointsCost * 0.05);
+          if (bonusPoints > 0) {
+            const newDealerWallet = (dealer.walletBalance ?? 0) + bonusPoints;
+            await this.dealerRepository.update(user.dealerId, {
+              walletBalance: newDealerWallet,
+            } as any);
+
+            // Save dealer wallet transaction for audit trail
+            const dealerWalletTx = this.walletRepository.create({
+              userId: user.dealerId,
+              userRole: UserRole.DEALER,
+              type: 'credit' as any,
+              source: 'dealer_bonus' as any,
+              amount: bonusPoints,
+              balanceBefore: dealer.walletBalance ?? 0,
+              balanceAfter: newDealerWallet,
+              description: `5% bonus from ${user.name}'s redemption of ${scheme.pointsCost} pts`,
+              referenceId: redemption.id,
+              referenceType: 'redemption',
+            });
+            await this.walletRepository.save(dealerWalletTx);
+          }
+        }
+      }
     }
 
     return { message: 'Redemption request submitted', redemption };
@@ -633,6 +884,24 @@ export class MobileService {
   async uploadProfilePhoto(userId: string, role: string, base64DataUri: string, source = 'upload') {
     // Store base64 image URL directly (in production, upload to S3/CDN)
     const profileImage = base64DataUri;
+    const userRole = this.toUserRole(role);
+
+    await this.userProfileImageRepository.update(
+      { userId, userRole, isCurrent: true },
+      { isCurrent: false },
+    );
+
+    await this.userProfileImageRepository.save(
+      this.userProfileImageRepository.create({
+        userId,
+        userRole,
+        imageData: profileImage,
+        mimeType: this.detectImageMimeType(profileImage),
+        isCurrent: true,
+        source,
+      }),
+    );
+
     if (role === 'electrician') {
       await this.electricianRepository.update(userId, { profileImage } as any);
     } else {
@@ -642,6 +911,11 @@ export class MobileService {
   }
 
   async removeProfilePhoto(userId: string, role: string) {
+    await this.userProfileImageRepository.update(
+      { userId, userRole: this.toUserRole(role) },
+      { isCurrent: false },
+    );
+
     if (role === 'electrician') {
       await this.electricianRepository.update(userId, { profileImage: null } as any);
     } else {

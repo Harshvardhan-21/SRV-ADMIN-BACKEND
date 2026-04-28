@@ -20,15 +20,19 @@ import { Festival } from '../../database/entities/festival.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { AppRating } from '../../database/entities/app-rating.entity';
 import { RewardScheme } from '../../database/entities/reward-scheme.entity';
+import { UserProfileImage } from '../../database/entities/user-profile-image.entity';
+import { UserQrCode } from '../../database/entities/user-qr-code.entity';
+import { TierModule } from '../../common/services/tier.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Product, ProductCategory, Banner, Notification, Offer, Testimonial,
       QrCode, Scan, Wallet, Electrician, Dealer, Redemption, Settings, Festival,
-      SupportTicket, AppRating, RewardScheme,
+      SupportTicket, AppRating, RewardScheme, UserProfileImage, UserQrCode,
     ]),
     MobileAuthModule,
+    TierModule,
   ],
   controllers: [MobileController],
   providers: [MobileService],

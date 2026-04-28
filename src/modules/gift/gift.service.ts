@@ -1,28 +1,37 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateGiftProductDto } from './dto/create-gift-product.dto';
 import { UpdateGiftProductDto } from './dto/update-gift-product.dto';
 import { Product } from '../../database/entities/product.entity';
+import { GiftOrder, GiftOrderStatus } from '../../database/entities/gift-order.entity';
 
 @Injectable()
 export class GiftService {
   constructor(
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(GiftOrder)
+    private giftOrderRepository: Repository<GiftOrder>,
   ) {}
 
-  async getProducts(page: number = 1, limit: number = 20) {
+  // ─── Gift Products ────────────────────────────────────────────────────────
+
+  async getProducts(page: number = 1, limit: number = 20, type?: string) {
     const skip = (page - 1) * limit;
 
-    const [data, total] = await this.productRepository.findAndCount({
-      where: { category: 'gift' },
-      skip,
-      take: limit,
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.productRepository
+      .createQueryBuilder('p')
+      .where('p.category = :cat', { cat: 'gift' });
 
-    // Map to frontend-expected shape
+    if (type && type !== 'all') {
+      qb.andWhere('p.subCategory = :type', { type });
+    }
+
+    qb.orderBy('p.createdAt', 'DESC').skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
     const mapped = data.map((p) => ({
       id: p.id,
       name: p.name,
@@ -33,18 +42,12 @@ export class GiftService {
       type: p.subCategory ?? 'electrician',
     }));
 
-    return {
-      data: mapped,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { data: mapped, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async createProduct(createGiftProductDto: CreateGiftProductDto) {
     const pointsValue =
-      createGiftProductDto.pointsRequired ??
+      (createGiftProductDto as any).pointsRequired ??
       createGiftProductDto.points ??
       0;
 
@@ -52,12 +55,12 @@ export class GiftService {
       name: createGiftProductDto.name,
       sub: createGiftProductDto.sub ?? createGiftProductDto.name,
       category: 'gift',
-      subCategory: createGiftProductDto.type ?? createGiftProductDto.subCategory ?? 'electrician',
+      subCategory: (createGiftProductDto as any).type ?? createGiftProductDto.subCategory ?? 'electrician',
       image: createGiftProductDto.image,
       points: pointsValue,
       stock: createGiftProductDto.stock ?? 0,
-      isActive: createGiftProductDto.status
-        ? createGiftProductDto.status === 'active'
+      isActive: (createGiftProductDto as any).status
+        ? (createGiftProductDto as any).status === 'active'
         : (createGiftProductDto.isActive ?? true),
       price: createGiftProductDto.price ?? 0,
       mrp: createGiftProductDto.mrp,
@@ -66,6 +69,7 @@ export class GiftService {
       description: createGiftProductDto.description,
       badge: createGiftProductDto.badge,
     });
+
     const saved = await this.productRepository.save(giftProduct);
     return {
       id: saved.id,
@@ -126,23 +130,140 @@ export class GiftService {
     return { message: 'Gift product deleted successfully' };
   }
 
-  async getOrders(page: number = 1, limit: number = 20, status?: string) {
-    // Gift orders table not yet implemented — return empty paginated response
+  // ─── Gift Orders ──────────────────────────────────────────────────────────
+
+  async getOrders(
+    page: number = 1,
+    limit: number = 20,
+    status?: string,
+    role?: string,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const qb = this.giftOrderRepository.createQueryBuilder('o');
+
+    if (status && status !== 'all') {
+      qb.andWhere('o.status = :status', { status });
+    }
+
+    if (role && role !== 'all') {
+      qb.andWhere('o.role = :role', { role });
+    }
+
+    qb.orderBy('o.orderedAt', 'DESC').skip(skip).take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
     return {
-      data: [],
-      total: 0,
+      data: data.map((o) => ({
+        id: o.id,
+        type: o.role,
+        userName: o.userName,
+        userCode: o.userCode ?? '',
+        dealerName: o.dealerName ?? '—',
+        giftName: o.giftName,
+        giftImage: o.giftImage ?? '',
+        pointsUsed: o.pointsUsed,
+        orderedAt: o.orderedAt,
+        status: o.status,
+        shippingAddress: o.shippingAddress,
+        trackingNumber: o.trackingNumber,
+        rejectionReason: o.rejectionReason,
+      })),
+      total,
       page,
       limit,
-      totalPages: 0,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
-  async updateOrderStatus(id: string, status: string) {
+  async createOrder(body: {
+    userId: string;
+    userName: string;
+    userCode?: string;
+    dealerName?: string;
+    role: string;
+    giftProductId: string;
+    shippingAddress?: string;
+  }) {
+    const giftProduct = await this.productRepository.findOne({
+      where: { id: body.giftProductId, category: 'gift' },
+    });
+
+    if (!giftProduct) {
+      throw new NotFoundException('Gift product not found');
+    }
+
+    if (giftProduct.stock <= 0) {
+      throw new BadRequestException('Gift product is out of stock');
+    }
+
+    const order = this.giftOrderRepository.create({
+      userId: body.userId,
+      userName: body.userName,
+      userCode: body.userCode,
+      dealerName: body.dealerName,
+      role: body.role as any,
+      giftProductId: body.giftProductId,
+      giftName: giftProduct.name,
+      giftImage: giftProduct.image ?? '',
+      pointsUsed: giftProduct.points,
+      status: GiftOrderStatus.PENDING,
+      shippingAddress: body.shippingAddress,
+    });
+
+    const saved = await this.giftOrderRepository.save(order);
+
+    // Decrement stock
+    await this.productRepository.decrement({ id: body.giftProductId }, 'stock', 1);
+
+    return saved;
+  }
+
+  async updateOrderStatus(id: string, status: string, extra?: { rejectionReason?: string; trackingNumber?: string; processedBy?: string }) {
+    const order = await this.giftOrderRepository.findOne({ where: { id } });
+
+    if (!order) {
+      throw new NotFoundException('Gift order not found');
+    }
+
+    const validStatuses = Object.values(GiftOrderStatus);
+    if (!validStatuses.includes(status as GiftOrderStatus)) {
+      throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    const updateData: Partial<GiftOrder> = {
+      status: status as GiftOrderStatus,
+    };
+
+    if (extra?.rejectionReason) updateData.rejectionReason = extra.rejectionReason;
+    if (extra?.trackingNumber) updateData.trackingNumber = extra.trackingNumber;
+    if (extra?.processedBy) updateData.processedBy = extra.processedBy;
+
+    if (status === GiftOrderStatus.APPROVED || status === GiftOrderStatus.REJECTED) {
+      updateData.processedAt = new Date();
+    }
+
+    // If rejected, restore stock
+    if (status === GiftOrderStatus.REJECTED && order.status !== GiftOrderStatus.REJECTED) {
+      await this.productRepository.increment({ id: order.giftProductId }, 'stock', 1);
+    }
+
+    await this.giftOrderRepository.update(id, updateData);
+
+    const updated = await this.giftOrderRepository.findOne({ where: { id } });
     return {
       message: 'Order status updated successfully',
       orderId: id,
-      newStatus: status,
-      updatedAt: new Date(),
+      newStatus: updated!.status,
+      updatedAt: updated!.updatedAt,
     };
+  }
+
+  async deleteOrder(id: string) {
+    const order = await this.giftOrderRepository.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Gift order not found');
+    await this.giftOrderRepository.remove(order);
+    return { message: 'Gift order deleted successfully' };
   }
 }
