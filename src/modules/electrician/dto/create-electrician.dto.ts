@@ -11,10 +11,9 @@ export class CreateElectricianDto {
   @IsString()
   phone: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  electricianCode?: string;
+  electricianCode: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
