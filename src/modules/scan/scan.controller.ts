@@ -28,8 +28,10 @@ export class ScanController {
     @Query('role') role?: UserRole,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('search') search?: string,
+    @Query('mode') mode?: string,
   ) {
-    return this.scanService.findAll(parseInt(page), parseInt(limit), userId, productId, role, dateFrom, dateTo);
+    return this.scanService.findAll(parseInt(page), parseInt(limit), userId, productId, role, dateFrom, dateTo, search, mode);
   }
 
   @Get('stats')

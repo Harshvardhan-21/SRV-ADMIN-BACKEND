@@ -22,6 +22,7 @@ export class AdminService {
     }
 
     const admin = this.adminRepository.create(createAdminDto);
+    // hashPassword() @BeforeInsert will auto-hash the password on save
     const savedAdmin = await this.adminRepository.save(admin);
     
     const { password, ...result } = savedAdmin;
@@ -68,19 +69,27 @@ export class AdminService {
   }
 
   async update(id: string, updateAdminDto: UpdateAdminDto) {
-    const admin = await this.findOne(id);
+    const admin = await this.adminRepository.findOne({ where: { id } });
+    if (!admin) throw new NotFoundException('Admin not found');
 
     if (updateAdminDto.email && updateAdminDto.email !== admin.email) {
       const existingAdmin = await this.adminRepository.findOne({
         where: { email: updateAdminDto.email },
       });
-
       if (existingAdmin) {
         throw new ConflictException('Admin with this email already exists');
       }
     }
 
-    await this.adminRepository.update(id, updateAdminDto);
+    // If password is being updated, hash it via the entity hook
+    if (updateAdminDto.password) {
+      // Assign to entity so @BeforeUpdate hook fires on save
+      Object.assign(admin, updateAdminDto);
+      await this.adminRepository.save(admin);
+    } else {
+      await this.adminRepository.update(id, updateAdminDto);
+    }
+
     return this.findOne(id);
   }
 
@@ -88,5 +97,14 @@ export class AdminService {
     const admin = await this.findOne(id);
     await this.adminRepository.remove(admin);
     return { message: 'Admin deleted successfully' };
+  }
+
+  async resetPassword(id: string, newPassword: string) {
+    const admin = await this.adminRepository.findOne({ where: { id } });
+    if (!admin) throw new NotFoundException('Admin not found');
+    // Assign password to entity so @BeforeUpdate hook hashes it
+    admin.password = newPassword;
+    await this.adminRepository.save(admin);
+    return { message: 'Password reset successfully' };
   }
 }

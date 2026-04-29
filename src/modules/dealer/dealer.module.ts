@@ -5,9 +5,10 @@ import { DealerService } from './dealer.service';
 import { Dealer } from '../../database/entities/dealer.entity';
 import { Electrician } from '../../database/entities/electrician.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
+import { TierModule } from '../../common/services/tier.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Dealer, Electrician, Wallet])],
+  imports: [TypeOrmModule.forFeature([Dealer, Electrician, Wallet]), TierModule],
   controllers: [DealerController],
   providers: [DealerService],
   exports: [DealerService],

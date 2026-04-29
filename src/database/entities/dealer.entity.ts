@@ -26,6 +26,9 @@ export class Dealer {
   @Column({ nullable: true })
   email: string;
 
+  @Column({ nullable: true, select: false })
+  passwordHash: string;
+
   @Column({ nullable: true })
   profileImage: string;
 
@@ -38,8 +41,17 @@ export class Dealer {
   @Column()
   state: string;
 
-  @Column({ type: 'text' })
+  @Column({ nullable: true, type: 'text' })
   address: string;
+
+  @Column({ nullable: true, default: 'English' })
+  language: string;
+
+  @Column({ default: false })
+  darkMode: boolean;
+
+  @Column({ default: true })
+  pushEnabled: boolean;
 
   @Column({ nullable: true })
   pincode: string;

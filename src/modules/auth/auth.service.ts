@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
 import { Admin } from '../../database/entities/admin.entity';
 import { LoginDto } from './dto/login.dto';
 
@@ -28,6 +29,20 @@ export class AuthService {
 
     if (!admin.isActive) {
       throw new UnauthorizedException('Account is inactive');
+    }
+
+    // If password is stored as plain text (not bcrypt hash), auto-rehash it
+    if (admin.password && !admin.password.startsWith('$2')) {
+      // Plain text password in DB — check it directly then rehash
+      if (admin.password !== password) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      // Rehash and save
+      const salt = await bcrypt.genSalt(10);
+      const hashed = await bcrypt.hash(password, salt);
+      await this.adminRepository.update(admin.id, { password: hashed });
+      const { password: _, ...result } = admin;
+      return result;
     }
 
     const isPasswordValid = await admin.validatePassword(password);

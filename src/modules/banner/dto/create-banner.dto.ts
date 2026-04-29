@@ -32,8 +32,7 @@ export class CreateBannerDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsArray()
-  targetRole?: string[];
+  targetRole?: string[] | string;
 
   @ApiProperty({ required: false })
   @IsOptional()

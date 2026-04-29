@@ -7,6 +7,7 @@ import { Dealer } from '../../database/entities/dealer.entity';
 import { Electrician } from '../../database/entities/electrician.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { UserStatus, MemberTier } from '../../common/enums';
+import { TierService } from '../../common/services/tier.service';
 
 @Injectable()
 export class DealerService {
@@ -17,6 +18,7 @@ export class DealerService {
     private electricianRepository: Repository<Electrician>,
     @InjectRepository(Wallet)
     private walletRepository: Repository<Wallet>,
+    private readonly tierService: TierService,
   ) {}
 
   async create(createDealerDto: CreateDealerDto) {
@@ -31,7 +33,12 @@ export class DealerService {
       throw new ConflictException('Dealer with this phone or code already exists');
     }
 
-    const dealer = this.dealerRepository.create(createDealerDto);
+    // New dealer starts with 0 electricians → Silver tier
+    const data: any = { ...createDealerDto };
+    data.electricianCount = 0;
+    data.tier = MemberTier.SILVER;
+
+    const dealer = this.dealerRepository.create(data);
     return this.dealerRepository.save(dealer);
   }
 
@@ -65,20 +72,11 @@ export class DealerService {
       queryBuilder.andWhere('dealer.state = :state', { state });
     }
 
-    queryBuilder
-      .orderBy('dealer.joinedDate', 'DESC')
-      .skip(skip)
-      .take(limit);
+    queryBuilder.orderBy('dealer.joinedDate', 'DESC').skip(skip).take(limit);
 
     const [data, total] = await queryBuilder.getManyAndCount();
 
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {
@@ -101,13 +99,19 @@ export class DealerService {
       const existingDealer = await this.dealerRepository.findOne({
         where: { phone: updateDealerDto.phone },
       });
-
       if (existingDealer) {
         throw new ConflictException('Dealer with this phone already exists');
       }
     }
 
-    await this.dealerRepository.update(id, updateDealerDto);
+    // Strip tier from update payload — tier is always auto-calculated
+    const { tier: _ignoredTier, electricianCount: _ignoredCount, ...safeData } = updateDealerDto as any;
+
+    await this.dealerRepository.update(id, safeData);
+
+    // Re-sync tier from actual electrician count
+    await this.tierService.syncDealerTier(id);
+
     return this.findOne(id);
   }
 
@@ -124,39 +128,33 @@ export class DealerService {
 
   async getDealerElectricians(id: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    
     const [data, total] = await this.electricianRepository.findAndCount({
       where: { dealerId: id },
       skip,
       take: limit,
       order: { joinedDate: 'DESC' },
     });
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getDealerWallet(id: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    
     const [data, total] = await this.walletRepository.findAndCount({
       where: { userId: id },
       skip,
       take: limit,
       order: { createdAt: 'DESC' },
     });
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
 
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+  async getStats() {
+    const [total, active, pending, inactive] = await Promise.all([
+      this.dealerRepository.count(),
+      this.dealerRepository.count({ where: { status: UserStatus.ACTIVE } }),
+      this.dealerRepository.count({ where: { status: UserStatus.PENDING } }),
+      this.dealerRepository.count({ where: { status: UserStatus.INACTIVE } }),
+    ]);
+    return { total, active, pending, inactive };
   }
 }

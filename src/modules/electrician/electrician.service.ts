@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CreateElectricianDto } from './dto/create-electrician.dto';
 import { UpdateElectricianDto } from './dto/update-electrician.dto';
 import { Electrician } from '../../database/entities/electrician.entity';
 import { Scan } from '../../database/entities/scan.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { UserStatus, MemberTier } from '../../common/enums';
+import { TierService } from '../../common/services/tier.service';
 
 @Injectable()
 export class ElectricianService {
@@ -17,6 +18,7 @@ export class ElectricianService {
     private scanRepository: Repository<Scan>,
     @InjectRepository(Wallet)
     private walletRepository: Repository<Wallet>,
+    private readonly tierService: TierService,
   ) {}
 
   async create(createElectricianDto: CreateElectricianDto) {
@@ -31,14 +33,24 @@ export class ElectricianService {
       throw new ConflictException('Electrician with this phone or code already exists');
     }
 
-    // Sanitize UUID fields — empty string is not a valid UUID
     const data: any = { ...createElectricianDto };
     if (!data.dealerId || data.dealerId.trim() === '') {
       data.dealerId = null;
     }
 
+    // Set initial tier based on points (if provided)
+    const points = Number(data.totalPoints ?? 0);
+    data.tier = this.tierService.calculateElectricianTier(points);
+
     const electrician = this.electricianRepository.create(data);
-    return this.electricianRepository.save(electrician);
+    const saved = (await this.electricianRepository.save(electrician as any)) as unknown as Electrician;
+
+    // If linked to a dealer, sync dealer's tier
+    if (saved.dealerId) {
+      await this.tierService.syncDealerTier(saved.dealerId);
+    }
+
+    return saved;
   }
 
   async findAll(
@@ -80,19 +92,12 @@ export class ElectricianService {
 
     const [rawData, total] = await queryBuilder.getManyAndCount();
 
-    // Attach dealerName from joined dealer relation
     const data = rawData.map(e => ({
       ...e,
       dealerName: (e as any).dealer?.name ?? null,
     }));
 
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {
@@ -115,48 +120,42 @@ export class ElectricianService {
       const existingElectrician = await this.electricianRepository.findOne({
         where: { phone: updateElectricianDto.phone },
       });
-
       if (existingElectrician) {
         throw new ConflictException('Electrician with this phone already exists');
       }
     }
 
-    // Sanitize UUID fields
     const data: any = { ...updateElectricianDto };
     if (data.dealerId !== undefined && (!data.dealerId || data.dealerId.trim() === '')) {
       data.dealerId = null;
     }
 
-    // Auto-recalculate tier when totalPoints is updated directly by admin
+    // Auto-recalculate tier when totalPoints changes — ignore any manually passed tier
     if (data.totalPoints !== undefined) {
       const points = Number(data.totalPoints);
-      if (!data.tier) {
-        // Only auto-set tier if admin didn't explicitly set it
-        data.tier = this.calculateTier(points);
-      }
-      // Keep walletBalance in sync with totalPoints if walletBalance not explicitly set
+      data.tier = this.tierService.calculateElectricianTier(points);
       if (data.walletBalance === undefined) {
         data.walletBalance = points;
       }
-    }
-
-    // If walletBalance is set but totalPoints is not, sync totalPoints too
-    if (data.walletBalance !== undefined && data.totalPoints === undefined) {
+    } else if (data.walletBalance !== undefined) {
+      // walletBalance changed but totalPoints not — sync totalPoints too
       data.totalPoints = Number(data.walletBalance);
-      if (!data.tier) {
-        data.tier = this.calculateTier(data.totalPoints);
-      }
+      data.tier = this.tierService.calculateElectricianTier(data.totalPoints);
     }
 
+    const oldDealerId = electrician.dealerId;
     await this.electricianRepository.update(id, data);
-    return this.findOne(id);
-  }
 
-  private calculateTier(points: number): string {
-    if (points >= 10000) return 'Diamond';
-    if (points >= 5001) return 'Platinum';
-    if (points >= 1001) return 'Gold';
-    return 'Silver';
+    // Sync dealer tier if dealer assignment changed
+    const newDealerId = data.dealerId !== undefined ? data.dealerId : oldDealerId;
+    if (oldDealerId !== newDealerId) {
+      if (oldDealerId) await this.tierService.syncDealerTier(oldDealerId);
+      if (newDealerId) await this.tierService.syncDealerTier(newDealerId);
+    } else if (newDealerId) {
+      await this.tierService.syncDealerTier(newDealerId);
+    }
+
+    return this.findOne(id);
   }
 
   async updateStatus(id: string, status: UserStatus) {
@@ -166,45 +165,52 @@ export class ElectricianService {
 
   async remove(id: string) {
     const electrician = await this.findOne(id);
+    const dealerId = electrician.dealerId;
+
     await this.electricianRepository.remove(electrician);
+
+    // Sync dealer tier after removal
+    if (dealerId) {
+      await this.tierService.syncDealerTier(dealerId);
+    }
+
     return { message: 'Electrician deleted successfully' };
   }
 
   async getElectricianScans(id: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    
     const [data, total] = await this.scanRepository.findAndCount({
       where: { userId: id },
       skip,
       take: limit,
       order: { scannedAt: 'DESC' },
     });
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getElectricianWallet(id: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    
     const [data, total] = await this.walletRepository.findAndCount({
       where: { userId: id },
       skip,
       take: limit,
       order: { createdAt: 'DESC' },
     });
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
 
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+  async getTierCounts() {
+    const rows = await this.electricianRepository
+      .createQueryBuilder('electrician')
+      .select('electrician.tier', 'tier')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('electrician.tier')
+      .getRawMany();
+
+    const result: Record<string, number> = { Silver: 0, Gold: 0, Platinum: 0, Diamond: 0 };
+    for (const row of rows) {
+      result[row.tier] = parseInt(row.count, 10);
+    }
+    return result;
   }
 }

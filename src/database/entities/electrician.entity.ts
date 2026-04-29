@@ -33,6 +33,9 @@ export class Electrician {
   @Column({ nullable: true })
   email: string;
 
+  @Column({ nullable: true, select: false })
+  passwordHash: string;
+
   @Column({ nullable: true })
   profileImage: string;
 
@@ -50,6 +53,15 @@ export class Electrician {
 
   @Column({ nullable: true, type: 'text' })
   address: string;
+
+  @Column({ nullable: true, default: 'English' })
+  language: string;
+
+  @Column({ default: false })
+  darkMode: boolean;
+
+  @Column({ default: true })
+  pushEnabled: boolean;
 
   @Column({
     type: 'enum',

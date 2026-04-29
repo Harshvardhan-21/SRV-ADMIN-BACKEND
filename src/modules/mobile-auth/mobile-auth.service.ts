@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,10 +11,17 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Electrician } from '../../database/entities/electrician.entity';
 import { Dealer } from '../../database/entities/dealer.entity';
-import { MobileLoginDto, VerifyOtpDto } from './dto/mobile-login.dto';
-
-// In-memory OTP store (production mein Redis use karein)
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
+import { OtpCode } from '../../database/entities/otp-code.entity';
+import { MemberTier, UserStatus } from '../../common/enums';
+import {
+  MobileLoginDto,
+  VerifyOtpDto,
+  MobilePasswordLoginDto,
+  SendSignupOtpDto,
+  VerifySignupOtpDto,
+  RegisterDealerDto,
+  RegisterElectricianDto,
+} from './dto/mobile-login.dto';
 
 @Injectable()
 export class MobileAuthService {
@@ -22,16 +30,95 @@ export class MobileAuthService {
     private electricianRepository: Repository<Electrician>,
     @InjectRepository(Dealer)
     private dealerRepository: Repository<Dealer>,
+    @InjectRepository(OtpCode)
+    private otpCodeRepository: Repository<OtpCode>,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {}
 
   private generateOtp(): string {
-    // Development mein fixed OTP, production mein SMS gateway use karein
-    if (this.configService.get('NODE_ENV') === 'development') {
-      return '1234';
+    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
+  }
+
+  private async createOtp(phone: string, purpose: string) {
+    const otp = this.generateOtp();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await this.otpCodeRepository.delete({ phone, purpose });
+    await this.otpCodeRepository.save(
+      this.otpCodeRepository.create({
+        phone,
+        purpose,
+        code: otp,
+        verified: false,
+        expiresAt,
+      }),
+    );
+
+    return otp;
+  }
+
+  private async verifyOtpCode(phone: string, purpose: string, otp: string) {
+    const stored = await this.otpCodeRepository.findOne({
+      where: { phone, purpose, verified: false },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!stored) {
+      throw new BadRequestException('OTP not found or expired. Please request a new OTP.');
     }
-    return Math.floor(1000 + Math.random() * 9000).toString();
+
+    if (Date.now() > new Date(stored.expiresAt).getTime()) {
+      await this.otpCodeRepository.delete({ id: stored.id });
+      throw new BadRequestException('OTP expired. Please request a new OTP.');
+    }
+
+    if (stored.code !== otp) {
+      throw new UnauthorizedException('Invalid OTP.');
+    }
+
+    await this.otpCodeRepository.update(stored.id, { verified: true });
+    return stored;
+  }
+
+  private async ensureVerifiedSignupOtp(phone: string, role: 'electrician' | 'dealer') {
+    const purpose = `MOBILE_${role.toUpperCase()}_SIGNUP`;
+    const verifiedOtp = await this.otpCodeRepository.findOne({
+      where: { phone, purpose, verified: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!verifiedOtp) {
+      throw new BadRequestException('Please verify OTP before creating your account.');
+    }
+
+    if (Date.now() > new Date(verifiedOtp.expiresAt).getTime()) {
+      await this.otpCodeRepository.delete({ id: verifiedOtp.id });
+      throw new BadRequestException('Verified OTP expired. Please request a new OTP.');
+    }
+
+    return verifiedOtp;
+  }
+
+  private async buildAuthResponse(user: any, role: 'electrician' | 'dealer') {
+    const payload = { sub: user.id, phone: user.phone, role };
+
+    const accessToken = this.jwtService.sign(payload);
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_REFRESH_SECRET'),
+      expiresIn: '30d',
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: this.formatUserProfile(user, role),
+    };
+  }
+
+  private buildCode(prefix: string) {
+    const random = Math.floor(1000 + Math.random() * 9000);
+    return `${prefix}${Date.now().toString().slice(-5)}${random}`;
   }
 
   async sendOtp(dto: MobileLoginDto) {
@@ -43,7 +130,7 @@ export class MobileAuthService {
       if (!electrician) {
         throw new NotFoundException('Electrician not registered. Please contact your dealer.');
       }
-      if (electrician.status === 'suspended') {
+      if (electrician.status === UserStatus.SUSPENDED) {
         throw new UnauthorizedException('Account is suspended. Contact support.');
       }
     } else {
@@ -51,45 +138,28 @@ export class MobileAuthService {
       if (!dealer) {
         throw new NotFoundException('Dealer not registered. Please contact SRV admin.');
       }
-      if (dealer.status === 'suspended') {
+      if (dealer.status === UserStatus.SUSPENDED) {
         throw new UnauthorizedException('Account is suspended. Contact support.');
       }
     }
 
-    const otp = this.generateOtp();
-    const key = `${phone}:${role}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + 5 * 60 * 1000 }); // 5 min expiry
+    const purpose = `MOBILE_${role.toUpperCase()}_LOGIN`;
+    const otp = await this.createOtp(phone, purpose);
 
-    // TODO: Integrate SMS gateway here (Twilio / MSG91 / Fast2SMS)
     console.log(`[OTP] Phone: ${phone}, Role: ${role}, OTP: ${otp}`);
 
     return {
       success: true,
       message: 'OTP sent successfully',
-      // In development, return OTP for testing
-      ...(this.configService.get('NODE_ENV') === 'development' && { devOtp: otp }),
+      expiresInSeconds: 300,
+      devOtp: otp, // Show in dev mode — remove in production
     };
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
     const { phone, role, otp } = dto;
-    const key = `${phone}:${role}`;
-    const stored = otpStore.get(key);
-
-    if (!stored) {
-      throw new BadRequestException('OTP not found or expired. Please request a new OTP.');
-    }
-
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(key);
-      throw new BadRequestException('OTP expired. Please request a new OTP.');
-    }
-
-    if (stored.otp !== otp) {
-      throw new UnauthorizedException('Invalid OTP.');
-    }
-
-    otpStore.delete(key);
+    const purpose = `MOBILE_${role.toUpperCase()}_LOGIN`;
+    await this.verifyOtpCode(phone, purpose, otp);
 
     // Get user profile
     let user: any;
@@ -116,19 +186,173 @@ export class MobileAuthService {
       await this.dealerRepository.update(user.id, { lastActivityAt: new Date() });
     }
 
-    const payload = { sub: user.id, phone: user.phone, role };
+    return this.buildAuthResponse(user, role);
+  }
 
-    const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_REFRESH_SECRET'),
-      expiresIn: '30d',
-    });
+  async passwordLogin(dto: MobilePasswordLoginDto) {
+    const { phone, role, password } = dto;
+    const bcrypt = await import('bcrypt');
+
+    // passwordHash has select:false on entity, must use QueryBuilder to fetch it
+    let user: any;
+    if (role === 'electrician') {
+      user = await this.electricianRepository
+        .createQueryBuilder('e')
+        .addSelect('e.passwordHash')
+        .where('e.phone = :phone', { phone })
+        .leftJoinAndSelect('e.dealer', 'dealer')
+        .getOne();
+    } else {
+      user = await this.dealerRepository
+        .createQueryBuilder('d')
+        .addSelect('d.passwordHash')
+        .where('d.phone = :phone', { phone })
+        .getOne();
+    }
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid phone number or password.');
+    }
+
+    if (user.status === UserStatus.SUSPENDED) {
+      throw new UnauthorizedException('Account is suspended. Contact support.');
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Password login is not set up for this account. Please use OTP login.');
+    }
+
+    const passwordOk = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Invalid phone number or password.');
+    }
+
+    if (role === 'electrician') {
+      await this.electricianRepository.update(user.id, { lastActivityAt: new Date() });
+    } else {
+      await this.dealerRepository.update(user.id, { lastActivityAt: new Date() });
+    }
+
+    return this.buildAuthResponse(user, role);
+  }
+
+  async sendSignupOtp(dto: SendSignupOtpDto) {
+    const { phone, role } = dto;
+
+    const existing =
+      role === 'electrician'
+        ? await this.electricianRepository.findOne({ where: { phone } })
+        : await this.dealerRepository.findOne({ where: { phone } });
+
+    if (existing) {
+      throw new ConflictException(`${role === 'electrician' ? 'Electrician' : 'Dealer'} already registered.`);
+    }
+
+    const purpose = `MOBILE_${role.toUpperCase()}_SIGNUP`;
+    const otp = await this.createOtp(phone, purpose);
+    console.log(`[OTP] Signup Phone: ${phone}, Role: ${role}, OTP: ${otp}`);
 
     return {
-      accessToken,
-      refreshToken,
-      user: this.formatUserProfile(user, role),
+      success: true,
+      message: 'Signup OTP sent successfully',
+      expiresInSeconds: 300,
+      devOtp: otp,
     };
+  }
+
+  async verifySignupOtp(dto: VerifySignupOtpDto) {
+    const { phone, role, otp } = dto;
+    const purpose = `MOBILE_${role.toUpperCase()}_SIGNUP`;
+    await this.verifyOtpCode(phone, purpose, otp);
+
+    return {
+      success: true,
+      message: 'OTP verified successfully',
+    };
+  }
+
+  async registerDealer(dto: RegisterDealerDto) {
+    await this.ensureVerifiedSignupOtp(dto.phone, 'dealer');
+
+    const existingDealer = await this.dealerRepository.findOne({
+      where: [{ phone: dto.phone }, ...(dto.email ? [{ email: dto.email }] : [])],
+    });
+    if (existingDealer) {
+      throw new ConflictException('Dealer already registered with this phone or email.');
+    }
+
+    const bcrypt = await import('bcrypt');
+    const statePrefix = (dto.state || 'SR').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 2) || 'SR';
+    const dealer = this.dealerRepository.create({
+      name: dto.name.trim(),
+      phone: dto.phone,
+      dealerCode: this.buildCode(statePrefix),
+      email: dto.email?.trim() || null,
+      town: dto.town.trim(),
+      district: dto.district.trim(),
+      state: dto.state.trim(),
+      address: dto.address.trim(),
+      pincode: dto.pincode?.trim() || null,
+      gstNumber: dto.gstNumber?.trim() || null,
+      status: UserStatus.PENDING,
+      tier: MemberTier.SILVER,
+      electricianCount: 0,
+      passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : null,
+    });
+
+    const saved = await this.dealerRepository.save(dealer);
+    return this.buildAuthResponse(saved, 'dealer');
+  }
+
+  async registerElectrician(dto: RegisterElectricianDto) {
+    await this.ensureVerifiedSignupOtp(dto.phone, 'electrician');
+
+    const existingElectrician = await this.electricianRepository.findOne({
+      where: [{ phone: dto.phone }, ...(dto.email ? [{ email: dto.email }] : [])],
+    });
+    if (existingElectrician) {
+      throw new ConflictException('Electrician already registered with this phone or email.');
+    }
+
+    const dealer = await this.dealerRepository.findOne({ where: { phone: dto.dealerPhone } });
+    if (!dealer) {
+      throw new NotFoundException('Dealer not found with this phone number.');
+    }
+
+    const bcrypt = await import('bcrypt');
+    const statePrefix = (dto.state || dealer.state || 'SR')
+      .replace(/[^A-Za-z]/g, '')
+      .toUpperCase()
+      .slice(0, 2) || 'SR';
+
+    const electrician = this.electricianRepository.create({
+      name: dto.name.trim(),
+      phone: dto.phone,
+      electricianCode: this.buildCode(statePrefix),
+      email: dto.email?.trim() || null,
+      city: dto.city.trim(),
+      district: dto.district.trim(),
+      state: dto.state.trim(),
+      pincode: dto.pincode?.trim() || null,
+      address: dto.address?.trim() || null,
+      dealerId: dealer.id,
+      status: UserStatus.PENDING,
+      tier: MemberTier.SILVER,
+      subCategory: dto.subCategory as any,
+      passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : null,
+    });
+
+    const saved = await this.electricianRepository.save(electrician);
+    await this.dealerRepository.update(dealer.id, {
+      electricianCount: (dealer.electricianCount ?? 0) + 1,
+    });
+
+    const fullUser = await this.electricianRepository.findOne({
+      where: { id: saved.id },
+      relations: ['dealer'],
+    });
+    if (!fullUser) throw new NotFoundException('User not found');
+    return this.buildAuthResponse(fullUser, 'electrician');
   }
 
   async refreshToken(token: string) {
@@ -173,44 +397,47 @@ export class MobileAuthService {
   }
 
   async updateProfile(userId: string, role: string, data: any) {
+    // Helper: only include fields that are explicitly provided
+    const pick = (obj: any, keys: string[]) => {
+      const result: any = {};
+      for (const key of keys) {
+        if (obj[key] !== undefined) {
+          result[key] = obj[key] === '' ? null : obj[key];
+        }
+      }
+      return result;
+    };
+
     if (role === 'electrician') {
-      await this.electricianRepository.update(userId, {
-        name: data.name,
-        email: data.email,
-        city: data.city,
-        state: data.state,
-        district: data.district,
-        pincode: data.pincode,
-        address: data.address,
-        upiId: data.upiId,
-        bankAccount: data.bankAccount,
-        ifsc: data.ifsc,
-        bankName: data.bankName,
-        accountHolderName: data.accountHolderName,
-        ...(data.profileImage !== undefined && { profileImage: data.profileImage }),
-        ...(data.bankLinked !== undefined && { bankLinked: data.bankLinked }),
-      });
+      const updateData = pick(data, [
+        'name', 'email', 'city', 'state', 'district', 'pincode', 'address',
+        'language', 'darkMode', 'pushEnabled', 'upiId', 'bankAccount',
+        'ifsc', 'bankName', 'accountHolderName', 'profileImage', 'bankLinked',
+      ]);
+      if (Object.keys(updateData).length > 0) {
+        await this.electricianRepository.update(userId, updateData);
+      }
       return this.getProfile(userId, role);
     } else {
-      await this.dealerRepository.update(userId, {
-        name: data.name,
-        email: data.email,
-        town: data.town,
-        district: data.district,
-        state: data.state,
-        address: data.address,
-        pincode: data.pincode,
-        gstNumber: data.gstNumber,
-        upiId: data.upiId,
-        bankAccount: data.bankAccount,
-        ifsc: data.ifsc,
-        bankName: data.bankName,
-        accountHolderName: data.accountHolderName,
-        ...(data.profileImage !== undefined && { profileImage: data.profileImage }),
-        ...(data.bankLinked !== undefined && { bankLinked: data.bankLinked }),
-      });
+      const updateData = pick(data, [
+        'name', 'email', 'town', 'district', 'state', 'address', 'pincode',
+        'gstNumber', 'language', 'darkMode', 'pushEnabled', 'upiId',
+        'bankAccount', 'ifsc', 'bankName', 'accountHolderName', 'profileImage', 'bankLinked',
+      ]);
+      if (Object.keys(updateData).length > 0) {
+        await this.dealerRepository.update(userId, updateData);
+      }
       return this.getProfile(userId, role);
     }
+  }
+
+  async logout(userId: string, role: string) {
+    if (role === 'electrician') {
+      await this.electricianRepository.update(userId, { lastActivityAt: new Date() });
+    } else {
+      await this.dealerRepository.update(userId, { lastActivityAt: new Date() });
+    }
+    return { success: true, message: 'Logged out successfully' };
   }
 
   private formatUserProfile(user: any, role: string) {
@@ -226,6 +453,9 @@ export class MobileAuthService {
         district: user.district,
         pincode: user.pincode,
         address: user.address,
+        language: user.language,
+        darkMode: user.darkMode,
+        pushEnabled: user.pushEnabled,
         tier: user.tier,
         subCategory: user.subCategory,
         totalPoints: user.totalPoints,
@@ -259,6 +489,9 @@ export class MobileAuthService {
         district: user.district,
         state: user.state,
         address: user.address,
+        language: user.language,
+        darkMode: user.darkMode,
+        pushEnabled: user.pushEnabled,
         pincode: user.pincode,
         gstNumber: user.gstNumber,
         tier: user.tier,

@@ -116,3 +116,14 @@ export enum BankAccountType {
   SAVINGS = 'savings',
   CURRENT = 'current',
 }
+
+export enum ChatParticipantType {
+  ADMIN = 'admin',
+  USER = 'user',
+}
+
+export enum ChatMessageType {
+  TEXT = 'text',
+  IMAGE = 'image',
+  FILE = 'file',
+}

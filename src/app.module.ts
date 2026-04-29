@@ -6,20 +6,29 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 // Entities
 import { Admin } from './database/entities/admin.entity';
+import { AppRating } from './database/entities/app-rating.entity';
 import { Banner } from './database/entities/banner.entity';
+import { ChatConversation, ChatMessage } from './database/entities/chat.entity';
 import { Dealer } from './database/entities/dealer.entity';
 import { Electrician } from './database/entities/electrician.entity';
+import { Festival } from './database/entities/festival.entity';
 import { Notification } from './database/entities/notification.entity';
 import { Offer } from './database/entities/offer.entity';
+import { OtpCode } from './database/entities/otp-code.entity';
 import { PointsConfig } from './database/entities/points-config.entity';
+import { ProductCategory } from './database/entities/product-category.entity';
 import { Product } from './database/entities/product.entity';
 import { QrCode } from './database/entities/qr-code.entity';
 import { Redemption } from './database/entities/redemption.entity';
+import { RewardScheme } from './database/entities/reward-scheme.entity';
 import { Scan } from './database/entities/scan.entity';
 import { Settings } from './database/entities/settings.entity';
 import { SupportTicket } from './database/entities/support-ticket.entity';
 import { Testimonial } from './database/entities/testimonial.entity';
+import { UserProfileImage } from './database/entities/user-profile-image.entity';
+import { UserQrCode } from './database/entities/user-qr-code.entity';
 import { Wallet } from './database/entities/wallet.entity';
+import { GiftOrder } from './database/entities/gift-order.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -44,6 +53,9 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MobileAuthModule } from './modules/mobile-auth/mobile-auth.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { AppCompatModule } from './modules/app-compat/app-compat.module';
+import { AppContentModule } from './modules/app-content/app-content.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -64,11 +76,15 @@ import { UploadModule } from './modules/upload/upload.module';
         password: configService.get<string>('DB_PASSWORD', ''),
         database: configService.get<string>('DB_DATABASE', 'srv_admin'),
         entities: [
-          Admin, Banner, Dealer, Electrician, Notification, Offer,
-          PointsConfig, Product, QrCode, Redemption, Scan, Settings,
-          SupportTicket, Testimonial, Wallet,
+          Admin, AppRating, Banner, ChatConversation, ChatMessage,
+          Dealer, Electrician, Festival, GiftOrder, Notification,
+          Offer, OtpCode, PointsConfig, ProductCategory, Product,
+          QrCode, Redemption, RewardScheme, Scan, Settings,
+          SupportTicket, Testimonial, UserProfileImage, UserQrCode,
+          Wallet,
         ],
-        synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
+        // This project uses an imported/shared PostgreSQL schema; never mutate it automatically at boot.
+        synchronize: false,
         logging: configService.get<string>('DB_LOGGING') === 'true',
         migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
         migrationsRun: false,
@@ -114,6 +130,9 @@ import { UploadModule } from './modules/upload/upload.module';
     MobileAuthModule,
     MobileModule,
     UploadModule,
+AppCompatModule,
+    AppContentModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
