@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateElectricianDto } from './dto/create-electrician.dto';
 import { UpdateElectricianDto } from './dto/update-electrician.dto';
 import { Electrician } from '../../database/entities/electrician.entity';
+import { Dealer } from '../../database/entities/dealer.entity';
 import { Scan } from '../../database/entities/scan.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { UserStatus, MemberTier } from '../../common/enums';
@@ -14,6 +15,8 @@ export class ElectricianService {
   constructor(
     @InjectRepository(Electrician)
     private electricianRepository: Repository<Electrician>,
+    @InjectRepository(Dealer)
+    private dealerRepository: Repository<Dealer>,
     @InjectRepository(Scan)
     private scanRepository: Repository<Scan>,
     @InjectRepository(Wallet)
@@ -22,20 +25,56 @@ export class ElectricianService {
   ) {}
 
   async create(createElectricianDto: CreateElectricianDto) {
+    const data: any = { ...createElectricianDto };
+    if (!data.dealerId || data.dealerId.trim() === '') {
+      data.dealerId = null;
+    }
+
+    // Auto-generate electrician code in format {dealerCode}-{3-digit-serial}
+    // This always overrides whatever code the frontend sends, ensuring correct format
+    if (data.dealerId) {
+      const dealer = await this.dealerRepository.findOne({ where: { id: data.dealerId } });
+      if (!dealer) {
+        throw new NotFoundException(`Dealer with id ${data.dealerId} not found`);
+      }
+      // Count existing electricians under this dealer to determine serial
+      const existingCount = await this.electricianRepository.count({
+        where: { dealerId: data.dealerId },
+      });
+      const serial = String(existingCount + 1).padStart(3, '0');
+      data.electricianCode = `${dealer.dealerCode}-${serial}`;
+    } else if (!data.electricianCode || data.electricianCode.trim() === '') {
+      // No dealer and no code provided — generate a fallback unique code
+      const timestamp = Date.now().toString().slice(-6);
+      const rand = String(Math.floor(Math.random() * 900) + 100);
+      data.electricianCode = `IND${timestamp}-${rand}`;
+    }
+
+    // Check for conflicts after code generation
     const existingElectrician = await this.electricianRepository.findOne({
       where: [
-        { phone: createElectricianDto.phone },
-        { electricianCode: createElectricianDto.electricianCode },
+        { phone: data.phone },
+        { electricianCode: data.electricianCode },
       ],
     });
 
     if (existingElectrician) {
-      throw new ConflictException('Electrician with this phone or code already exists');
-    }
-
-    const data: any = { ...createElectricianDto };
-    if (!data.dealerId || data.dealerId.trim() === '') {
-      data.dealerId = null;
+      // If code conflicts (race condition), increment serial and retry once
+      if (existingElectrician.electricianCode === data.electricianCode && data.dealerId) {
+        const existingCount = await this.electricianRepository.count({
+          where: { dealerId: data.dealerId },
+        });
+        const serial = String(existingCount + 1).padStart(3, '0');
+        const dealer = await this.dealerRepository.findOne({ where: { id: data.dealerId } });
+        data.electricianCode = `${dealer!.dealerCode}-${serial}`;
+        // Re-check phone conflict only
+        const phoneConflict = await this.electricianRepository.findOne({ where: { phone: data.phone } });
+        if (phoneConflict) {
+          throw new ConflictException('Electrician with this phone already exists');
+        }
+      } else {
+        throw new ConflictException('Electrician with this phone or code already exists');
+      }
     }
 
     // Set initial tier based on points (if provided)
