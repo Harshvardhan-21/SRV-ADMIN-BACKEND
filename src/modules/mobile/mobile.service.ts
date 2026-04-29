@@ -268,19 +268,40 @@ export class MobileService {
   async getBanners(role?: string) {
     const qb = this.bannerRepository
       .createQueryBuilder('banner')
-      .where('banner.isActive = :isActive', { isActive: true })
+      .where("(banner.isActive = true OR banner.status = 'active')")
       .andWhere("(banner.status IS NULL OR banner.status <> 'inactive')");
 
     if (role) {
+      // targetRole is a text[] array — use array containment operator
+      // 'Both' means show to everyone; null/empty also means show to everyone
+      // Admin panel stores 'Electrician'/'Dealer'/'Both' (capitalized)
+      // Mobile app queries with 'electrician'/'dealer' (lowercase)
+      const roleLower = role.toLowerCase();
+      const roleCapitalized = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
       qb.andWhere(
-        '(banner.targetRole IS NULL OR banner.targetRole = \'\' OR banner.targetRole ILIKE :role)',
-        { role: `%${role}%` },
+        `(banner.targetRole IS NULL 
+          OR cardinality(banner.targetRole) = 0 
+          OR :roleLower = ANY(banner.targetRole) 
+          OR :roleCapitalized = ANY(banner.targetRole)
+          OR 'Both' = ANY(banner.targetRole)
+          OR 'both' = ANY(banner.targetRole)
+          OR 'all' = ANY(banner.targetRole))`,
+        { roleLower, roleCapitalized },
       );
     }
 
     qb.orderBy('banner.displayOrder', 'ASC').addOrderBy('banner.order', 'ASC');
     const banners = await qb.getMany();
-    return { data: banners };
+    
+    // Rewrite localhost URLs to LAN IP for mobile app compatibility
+    const host = process.env.SERVER_HOST || '192.168.29.51';
+    const port = process.env.PORT || '3001';
+    const data = banners.map((banner) => ({
+      ...banner,
+      imageUrl: banner.imageUrl?.replace(/http:\/\/localhost:(\d+)/, `http://${host}:$1`),
+    }));
+    
+    return { data };
   }
 
   async getNotifications(userId?: string, role?: string) {
@@ -297,11 +318,8 @@ export class MobileService {
 
     if (userId) {
       qb.andWhere(
-        '(notification.userId IS NULL OR notification.userId = :userId OR notification.targetUserIds IS NULL OR notification.targetUserIds LIKE :userIdPattern)',
-        {
-          userId,
-          userIdPattern: `%${userId}%`,
-        },
+        '(notification.userId IS NULL OR notification.userId = :userId OR notification.targetUserIds IS NULL OR :userId = ANY(notification.targetUserIds))',
+        { userId },
       );
     }
 
@@ -985,6 +1003,39 @@ export class MobileService {
     }
     qb.orderBy('scheme.sortOrder', 'ASC');
     const data = await qb.getMany();
+    return { data };
+  }
+
+  async getGiftProducts(role?: string) {
+    const qb = this.productRepository
+      .createQueryBuilder('p')
+      .where('p.category = :cat', { cat: 'gift' })
+      .andWhere('p.isActive = :active', { active: true });
+
+    if (role) {
+      // subCategory 'electrician' or 'dealer' — show matching + 'both'
+      const roleLower = role.toLowerCase();
+      qb.andWhere(
+        '(p.subCategory IS NULL OR LOWER(p.subCategory) = :role OR LOWER(p.subCategory) = :both)',
+        { role: roleLower, both: 'both' },
+      );
+    }
+
+    qb.orderBy('p.points', 'ASC');
+    const products = await qb.getMany();
+
+    const data = products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description ?? p.sub ?? '',
+      imageUrl: p.image ?? null,
+      pointsRequired: p.points ?? 0,
+      mrp: p.mrp ?? p.price ?? 0,
+      stock: p.stock ?? 0,
+      badge: p.badge ?? '',
+      targetRole: p.subCategory ?? 'both',
+    }));
+
     return { data };
   }
 

@@ -35,6 +35,13 @@ export class BannerController {
     return this.bannerService.findAll();
   }
 
+  @Post('sync-status')
+  @ApiOperation({ summary: 'Sync isActive field with status for all banners' })
+  @ApiResponse({ status: 200, description: 'Banners synced successfully' })
+  syncStatus() {
+    return this.bannerService.syncIsActiveWithStatus();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get banner by ID' })
   @ApiResponse({ status: 200, description: 'Banner details' })

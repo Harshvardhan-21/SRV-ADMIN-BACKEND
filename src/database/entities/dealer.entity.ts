@@ -41,7 +41,7 @@ export class Dealer {
   @Column()
   state: string;
 
-  @Column({ type: 'text' })
+  @Column({ nullable: true, type: 'text' })
   address: string;
 
   @Column({ nullable: true, default: 'English' })

@@ -54,6 +54,13 @@ export class AdminController {
     return this.adminService.update(id, updateAdminDto);
   }
 
+  @Patch(':id/reset-password')
+  @ApiOperation({ summary: 'Reset admin password' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  resetPassword(@Param('id') id: string, @Body() body: { password: string }) {
+    return this.adminService.resetPassword(id, body.password);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete admin' })
   @ApiResponse({ status: 200, description: 'Admin deleted successfully' })

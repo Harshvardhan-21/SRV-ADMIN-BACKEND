@@ -289,4 +289,10 @@ export class MobileController {
   getRewardSchemes(@Query('category') category?: string) {
     return this.mobileService.getRewardSchemes(category);
   }
+
+  @Get('gift-products')
+  @ApiOperation({ summary: 'Get gift store products for app' })
+  getGiftProducts(@Query('role') role?: string) {
+    return this.mobileService.getGiftProducts(role);
+  }
 }

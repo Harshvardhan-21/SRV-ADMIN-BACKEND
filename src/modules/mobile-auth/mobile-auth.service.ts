@@ -130,7 +130,7 @@ export class MobileAuthService {
       if (!electrician) {
         throw new NotFoundException('Electrician not registered. Please contact your dealer.');
       }
-      if (electrician.status === 'suspended') {
+      if (electrician.status === UserStatus.SUSPENDED) {
         throw new UnauthorizedException('Account is suspended. Contact support.');
       }
     } else {
@@ -138,7 +138,7 @@ export class MobileAuthService {
       if (!dealer) {
         throw new NotFoundException('Dealer not registered. Please contact SRV admin.');
       }
-      if (dealer.status === 'suspended') {
+      if (dealer.status === UserStatus.SUSPENDED) {
         throw new UnauthorizedException('Account is suspended. Contact support.');
       }
     }
@@ -193,17 +193,22 @@ export class MobileAuthService {
     const { phone, role, password } = dto;
     const bcrypt = await import('bcrypt');
 
-    const user =
-      role === 'electrician'
-        ? await this.electricianRepository.findOne({
-            where: { phone },
-            select: ['id', 'phone', 'name', 'passwordHash', 'status'],
-            relations: ['dealer'],
-          })
-        : await this.dealerRepository.findOne({
-            where: { phone },
-            select: ['id', 'phone', 'name', 'passwordHash', 'status'],
-          });
+    // passwordHash has select:false on entity, must use QueryBuilder to fetch it
+    let user: any;
+    if (role === 'electrician') {
+      user = await this.electricianRepository
+        .createQueryBuilder('e')
+        .addSelect('e.passwordHash')
+        .where('e.phone = :phone', { phone })
+        .leftJoinAndSelect('e.dealer', 'dealer')
+        .getOne();
+    } else {
+      user = await this.dealerRepository
+        .createQueryBuilder('d')
+        .addSelect('d.passwordHash')
+        .where('d.phone = :phone', { phone })
+        .getOne();
+    }
 
     if (!user) {
       throw new UnauthorizedException('Invalid phone number or password.');
@@ -214,7 +219,7 @@ export class MobileAuthService {
     }
 
     if (!user.passwordHash) {
-      throw new UnauthorizedException('Password login is not configured for this account.');
+      throw new UnauthorizedException('Password login is not set up for this account. Please use OTP login.');
     }
 
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
@@ -224,18 +229,11 @@ export class MobileAuthService {
 
     if (role === 'electrician') {
       await this.electricianRepository.update(user.id, { lastActivityAt: new Date() });
-      const fullUser = await this.electricianRepository.findOne({
-        where: { id: user.id },
-        relations: ['dealer'],
-      });
-      if (!fullUser) throw new NotFoundException('User not found');
-      return this.buildAuthResponse(fullUser, role);
+    } else {
+      await this.dealerRepository.update(user.id, { lastActivityAt: new Date() });
     }
 
-    await this.dealerRepository.update(user.id, { lastActivityAt: new Date() });
-    const fullUser = await this.dealerRepository.findOne({ where: { id: user.id } });
-    if (!fullUser) throw new NotFoundException('User not found');
-    return this.buildAuthResponse(fullUser, role);
+    return this.buildAuthResponse(user, role);
   }
 
   async sendSignupOtp(dto: SendSignupOtpDto) {
@@ -399,48 +397,36 @@ export class MobileAuthService {
   }
 
   async updateProfile(userId: string, role: string, data: any) {
+    // Helper: only include fields that are explicitly provided
+    const pick = (obj: any, keys: string[]) => {
+      const result: any = {};
+      for (const key of keys) {
+        if (obj[key] !== undefined) {
+          result[key] = obj[key] === '' ? null : obj[key];
+        }
+      }
+      return result;
+    };
+
     if (role === 'electrician') {
-      await this.electricianRepository.update(userId, {
-        name: data.name,
-        email: data.email,
-        city: data.city,
-        state: data.state,
-        district: data.district,
-        pincode: data.pincode,
-        address: data.address,
-        language: data.language,
-        darkMode: data.darkMode,
-        pushEnabled: data.pushEnabled,
-        upiId: data.upiId,
-        bankAccount: data.bankAccount,
-        ifsc: data.ifsc,
-        bankName: data.bankName,
-        accountHolderName: data.accountHolderName,
-        ...(data.profileImage !== undefined && { profileImage: data.profileImage }),
-        ...(data.bankLinked !== undefined && { bankLinked: data.bankLinked }),
-      });
+      const updateData = pick(data, [
+        'name', 'email', 'city', 'state', 'district', 'pincode', 'address',
+        'language', 'darkMode', 'pushEnabled', 'upiId', 'bankAccount',
+        'ifsc', 'bankName', 'accountHolderName', 'profileImage', 'bankLinked',
+      ]);
+      if (Object.keys(updateData).length > 0) {
+        await this.electricianRepository.update(userId, updateData);
+      }
       return this.getProfile(userId, role);
     } else {
-      await this.dealerRepository.update(userId, {
-        name: data.name,
-        email: data.email,
-        town: data.town,
-        district: data.district,
-        state: data.state,
-        address: data.address,
-        pincode: data.pincode,
-        language: data.language,
-        darkMode: data.darkMode,
-        pushEnabled: data.pushEnabled,
-        gstNumber: data.gstNumber,
-        upiId: data.upiId,
-        bankAccount: data.bankAccount,
-        ifsc: data.ifsc,
-        bankName: data.bankName,
-        accountHolderName: data.accountHolderName,
-        ...(data.profileImage !== undefined && { profileImage: data.profileImage }),
-        ...(data.bankLinked !== undefined && { bankLinked: data.bankLinked }),
-      });
+      const updateData = pick(data, [
+        'name', 'email', 'town', 'district', 'state', 'address', 'pincode',
+        'gstNumber', 'language', 'darkMode', 'pushEnabled', 'upiId',
+        'bankAccount', 'ifsc', 'bankName', 'accountHolderName', 'profileImage', 'bankLinked',
+      ]);
+      if (Object.keys(updateData).length > 0) {
+        await this.dealerRepository.update(userId, updateData);
+      }
       return this.getProfile(userId, role);
     }
   }
