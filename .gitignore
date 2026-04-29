@@ -71,4 +71,4 @@ docker-compose.override.yml
 /out-tsc
 
 #database push
-admin_database.sql
+srvelectricals_app_2026-04-21_16-57.sql
