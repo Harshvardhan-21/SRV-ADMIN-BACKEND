@@ -14,16 +14,20 @@ import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('Product Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('products')
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create new product' })
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
+  @ApiOperation({ summary: 'Create new product (Super Admin & Admin only)' })
   @ApiResponse({ status: 201, description: 'Product created successfully' })
   create(@Body() createProductDto: CreateProductDto) {
     return this.productService.create(createProductDto);
@@ -56,14 +60,16 @@ export class ProductController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update product' })
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
+  @ApiOperation({ summary: 'Update product (Super Admin & Admin only)' })
   @ApiResponse({ status: 200, description: 'Product updated successfully' })
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
     return this.productService.update(id, updateProductDto);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete product' })
+  @Roles(AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Delete product (Super Admin only)' })
   @ApiResponse({ status: 200, description: 'Product deleted successfully' })
   remove(@Param('id') id: string) {
     return this.productService.remove(id);

@@ -21,6 +21,7 @@ import { SupportTicket } from './database/entities/support-ticket.entity';
 import { Testimonial } from './database/entities/testimonial.entity';
 import { Wallet } from './database/entities/wallet.entity';
 import { GiftOrder } from './database/entities/gift-order.entity';
+import { ProductCategory } from './database/entities/product-category.entity';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -45,6 +46,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MobileAuthModule } from './modules/mobile-auth/mobile-auth.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { ProductCategoryModule } from './modules/product-category/product-category.module';
 
 @Module({
   imports: [
@@ -67,7 +69,7 @@ import { UploadModule } from './modules/upload/upload.module';
         entities: [
           Admin, Banner, Dealer, Electrician, Notification, Offer,
           PointsConfig, Product, QrCode, Redemption, Scan, Settings,
-          SupportTicket, Testimonial, Wallet, GiftOrder,
+          SupportTicket, Testimonial, Wallet, GiftOrder, ProductCategory,
         ],
         synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
         logging: configService.get<string>('DB_LOGGING') === 'true',
@@ -115,6 +117,7 @@ import { UploadModule } from './modules/upload/upload.module';
     MobileAuthModule,
     MobileModule,
     UploadModule,
+    ProductCategoryModule,
   ],
 })
 export class AppModule {}

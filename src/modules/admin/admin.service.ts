@@ -1,18 +1,25 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
+import { PrismaClient } from '@prisma/client';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
+import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 import { Admin } from '../../database/entities/admin.entity';
 
 @Injectable()
 export class AdminService {
+  private prisma = new PrismaClient();
+
   constructor(
     @InjectRepository(Admin)
     private adminRepository: Repository<Admin>,
   ) {}
 
   async create(createAdminDto: CreateAdminDto) {
+    console.log('=== CREATE ADMIN CALLED ===');
+    console.log('Payload received:', JSON.stringify(createAdminDto, null, 2));
+    
     const existingAdmin = await this.adminRepository.findOne({
       where: { email: createAdminDto.email },
     });
@@ -68,7 +75,18 @@ export class AdminService {
   }
 
   async update(id: string, updateAdminDto: UpdateAdminDto) {
-    const admin = await this.findOne(id);
+    console.log('=== UPDATE ADMIN CALLED ===');
+    console.log('Admin ID:', id);
+    console.log('Payload received:', JSON.stringify(updateAdminDto, null, 2));
+    
+    // First, get the full admin entity (including password field)
+    const admin = await this.adminRepository.findOne({
+      where: { id },
+    });
+
+    if (!admin) {
+      throw new NotFoundException('Admin not found');
+    }
 
     if (updateAdminDto.email && updateAdminDto.email !== admin.email) {
       const existingAdmin = await this.adminRepository.findOne({
@@ -80,13 +98,85 @@ export class AdminService {
       }
     }
 
-    await this.adminRepository.update(id, updateAdminDto);
-    return this.findOne(id);
+    // Merge the updates into the entity
+    Object.assign(admin, updateAdminDto);
+
+    // Save the entity (this will trigger @BeforeUpdate hook for password hashing)
+    const savedAdmin = await this.adminRepository.save(admin);
+
+    // Return without password field
+    const { password, ...result } = savedAdmin;
+    return result;
   }
 
   async remove(id: string) {
     const admin = await this.findOne(id);
     await this.adminRepository.remove(admin);
     return { message: 'Admin deleted successfully' };
+  }
+
+  // Permission Management Methods
+  async getPermissions(adminId: string) {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    
+    if (!admin) {
+      throw new NotFoundException('Admin not found');
+    }
+
+    // Super admin always has all permissions
+    if (admin.role === 'super_admin') {
+      return { role: 'super_admin', permissions: [] };
+    }
+
+    const permissions = await this.prisma.adminPermission.findMany({
+      where: { adminId },
+      select: {
+        module: true,
+        canView: true,
+        canCreate: true,
+        canEdit: true,
+        canDelete: true,
+        canExport: true,
+      },
+    });
+
+    return { role: admin.role, permissions };
+  }
+
+  async updatePermissions(adminId: string, updatePermissionsDto: UpdatePermissionsDto) {
+    const admin = await this.adminRepository.findOne({ where: { id: adminId } });
+    
+    if (!admin) {
+      throw new NotFoundException('Admin not found');
+    }
+
+    // Cannot modify super admin permissions
+    if (admin.role === 'super_admin') {
+      throw new ConflictException('Cannot modify super admin permissions');
+    }
+
+    // Delete existing permissions
+    await this.prisma.adminPermission.deleteMany({
+      where: { adminId },
+    });
+
+    // Create new permissions
+    const permissions = updatePermissionsDto.permissions.map((perm) => ({
+      adminId: adminId,
+      module: perm.module,
+      canView: perm.canView ?? false,
+      canCreate: perm.canCreate ?? false,
+      canEdit: perm.canEdit ?? false,
+      canDelete: perm.canDelete ?? false,
+      canExport: perm.canExport ?? false,
+    }));
+
+    if (permissions.length > 0) {
+      await this.prisma.adminPermission.createMany({
+        data: permissions,
+      });
+    }
+
+    return this.getPermissions(adminId);
   }
 }
