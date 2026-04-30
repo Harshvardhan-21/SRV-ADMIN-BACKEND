@@ -49,6 +49,9 @@ export class DealerService {
     status?: UserStatus,
     tier?: MemberTier,
     state?: string,
+    bankLinked?: boolean,
+    dateFrom?: string,
+    dateTo?: string,
   ) {
     const skip = (page - 1) * limit;
     const queryBuilder = this.dealerRepository.createQueryBuilder('dealer');
@@ -70,6 +73,20 @@ export class DealerService {
 
     if (state) {
       queryBuilder.andWhere('dealer.state = :state', { state });
+    }
+
+    if (bankLinked !== undefined) {
+      queryBuilder.andWhere('dealer.bankLinked = :bankLinked', { bankLinked });
+    }
+
+    if (dateFrom) {
+      queryBuilder.andWhere('dealer.joinedDate >= :dateFrom', { dateFrom: new Date(dateFrom) });
+    }
+
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      queryBuilder.andWhere('dealer.joinedDate <= :dateTo', { dateTo: to });
     }
 
     queryBuilder.orderBy('dealer.joinedDate', 'DESC').skip(skip).take(limit);
@@ -146,6 +163,16 @@ export class DealerService {
       order: { createdAt: 'DESC' },
     });
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getDistinctStates(): Promise<{ states: string[] }> {
+    const rows = await this.dealerRepository
+      .createQueryBuilder('dealer')
+      .select('DISTINCT dealer.state', 'state')
+      .where('dealer.state IS NOT NULL')
+      .orderBy('dealer.state', 'ASC')
+      .getRawMany();
+    return { states: rows.map(r => r.state).filter(Boolean) };
   }
 
   async getStats() {

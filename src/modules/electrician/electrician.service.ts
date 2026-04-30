@@ -61,6 +61,10 @@ export class ElectricianService {
     tier?: MemberTier,
     state?: string,
     dealerId?: string,
+    subCategory?: string,
+    bankLinked?: boolean,
+    dateFrom?: string,
+    dateTo?: string,
   ) {
     const skip = (page - 1) * limit;
     const queryBuilder = this.electricianRepository
@@ -88,6 +92,24 @@ export class ElectricianService {
 
     if (dealerId) {
       queryBuilder.andWhere('electrician.dealerId = :dealerId', { dealerId });
+    }
+
+    if (subCategory) {
+      queryBuilder.andWhere('electrician.subCategory = :subCategory', { subCategory });
+    }
+
+    if (bankLinked !== undefined) {
+      queryBuilder.andWhere('electrician.bankLinked = :bankLinked', { bankLinked });
+    }
+
+    if (dateFrom) {
+      queryBuilder.andWhere('electrician.joinedDate >= :dateFrom', { dateFrom: new Date(dateFrom) });
+    }
+
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      queryBuilder.andWhere('electrician.joinedDate <= :dateTo', { dateTo: to });
     }
 
     queryBuilder
@@ -202,6 +224,26 @@ export class ElectricianService {
       order: { createdAt: 'DESC' },
     });
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getDistinctStates(): Promise<{ states: string[] }> {
+    const rows = await this.electricianRepository
+      .createQueryBuilder('electrician')
+      .select('DISTINCT electrician.state', 'state')
+      .where('electrician.state IS NOT NULL')
+      .orderBy('electrician.state', 'ASC')
+      .getRawMany();
+    return { states: rows.map(r => r.state).filter(Boolean) };
+  }
+
+  async getDistinctCategories(): Promise<{ categories: string[] }> {
+    const rows = await this.electricianRepository
+      .createQueryBuilder('electrician')
+      .select('DISTINCT electrician.subCategory', 'subCategory')
+      .where('electrician.subCategory IS NOT NULL')
+      .orderBy('electrician.subCategory', 'ASC')
+      .getRawMany();
+    return { categories: rows.map(r => r.subCategory).filter(Boolean) };
   }
 
   async getTierCounts() {

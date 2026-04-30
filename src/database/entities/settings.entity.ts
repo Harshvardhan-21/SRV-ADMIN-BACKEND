@@ -3,6 +3,8 @@ import {
   Column,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  BeforeInsert,
+  BeforeUpdate,
 } from 'typeorm';
 
 @Entity('settings')
@@ -24,4 +26,16 @@ export class Settings {
 
   @UpdateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setUpdatedAtOnInsert() {
+    if (!this.updatedAt) {
+      this.updatedAt = new Date();
+    }
+  }
+
+  @BeforeUpdate()
+  setUpdatedAtOnUpdate() {
+    this.updatedAt = new Date();
+  }
 }

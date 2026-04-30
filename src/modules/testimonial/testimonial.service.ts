@@ -47,7 +47,14 @@ export class TestimonialService {
 
   async remove(id: string) {
     const testimonial = await this.findOne(id);
+    // Hard delete — mobile app getTestimonials() only returns isActive=true,
+    // so deleting here immediately removes it from the app as well.
     await this.testimonialRepository.remove(testimonial);
     return { message: 'Testimonial deleted successfully' };
+  }
+
+  async deactivate(id: string) {
+    await this.testimonialRepository.update(id, { isActive: false });
+    return this.findOne(id);
   }
 }

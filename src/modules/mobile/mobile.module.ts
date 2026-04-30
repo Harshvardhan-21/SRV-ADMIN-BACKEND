@@ -15,13 +15,15 @@ import { Electrician } from '../../database/entities/electrician.entity';
 import { Dealer } from '../../database/entities/dealer.entity';
 import { Redemption } from '../../database/entities/redemption.entity';
 import { Settings } from '../../database/entities/settings.entity';
+import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { TierModule } from '../../common/services/tier.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Product, Banner, Notification, Offer, Testimonial,
-      QrCode, Scan, Wallet, Electrician, Dealer, Redemption, Settings,
+      QrCode, Scan, Wallet, Electrician, Dealer, Redemption,
+      Settings, SupportTicket,
     ]),
     MobileAuthModule,
     TierModule,

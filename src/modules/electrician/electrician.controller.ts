@@ -41,8 +41,29 @@ export class ElectricianController {
     @Query('tier') tier?: MemberTier,
     @Query('state') state?: string,
     @Query('dealerId') dealerId?: string,
+    @Query('subCategory') subCategory?: string,
+    @Query('bankLinked') bankLinked?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.electricianService.findAll(parseInt(page), parseInt(limit), search, status, tier, state, dealerId);
+    return this.electricianService.findAll(
+      parseInt(page), parseInt(limit),
+      search, status, tier, state, dealerId, subCategory,
+      bankLinked === 'true' ? true : bankLinked === 'false' ? false : undefined,
+      dateFrom, dateTo,
+    );
+  }
+
+  @Get('distinct-states')
+  @ApiOperation({ summary: 'Get all distinct electrician states for filter dropdown' })
+  getDistinctStates() {
+    return this.electricianService.getDistinctStates();
+  }
+
+  @Get('distinct-categories')
+  @ApiOperation({ summary: 'Get all distinct electrician subCategories for filter dropdown' })
+  getDistinctCategories() {
+    return this.electricianService.getDistinctCategories();
   }
 
   @Get('tier-counts')

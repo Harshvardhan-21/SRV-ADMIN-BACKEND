@@ -49,6 +49,7 @@ export class SettingsService {
         value,
         description,
         updatedBy: adminId,
+        updatedAt: new Date(),
       });
     } else {
       const newSetting = this.settingsRepository.create({
@@ -57,6 +58,7 @@ export class SettingsService {
         value,
         description,
         updatedBy: adminId,
+        updatedAt: new Date(),
       });
       await this.settingsRepository.save(newSetting);
     }
