@@ -15,16 +15,19 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { NotificationStatus } from '../../common/enums';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { NotificationStatus, AdminRole } from '../../common/enums';
 
 @ApiTags('Notification Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('notifications')
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
   @Post()
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create new notification' })
   @ApiResponse({ status: 201, description: 'Notification created successfully' })
   create(
@@ -53,6 +56,7 @@ export class NotificationController {
   }
 
   @Patch(':id')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update notification' })
   @ApiResponse({ status: 200, description: 'Notification updated successfully' })
   update(@Param('id') id: string, @Body() updateNotificationDto: UpdateNotificationDto) {
@@ -60,6 +64,7 @@ export class NotificationController {
   }
 
   @Post(':id/send')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Send notification' })
   @ApiResponse({ status: 200, description: 'Notification sent successfully' })
   send(@Param('id') id: string) {
@@ -67,6 +72,7 @@ export class NotificationController {
   }
 
   @Delete(':id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete notification' })
   @ApiResponse({ status: 200, description: 'Notification deleted successfully' })
   remove(@Param('id') id: string) {

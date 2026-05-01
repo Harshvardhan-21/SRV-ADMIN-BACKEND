@@ -14,16 +14,19 @@ import { ElectricianService } from './electrician.service';
 import { CreateElectricianDto } from './dto/create-electrician.dto';
 import { UpdateElectricianDto } from './dto/update-electrician.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { UserStatus, MemberTier } from '../../common/enums';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserStatus, MemberTier, AdminRole } from '../../common/enums';
 
 @ApiTags('Electrician Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('electricians')
 export class ElectricianController {
   constructor(private readonly electricianService: ElectricianService) {}
 
   @Post()
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create new electrician' })
   @ApiResponse({ status: 201, description: 'Electrician created successfully' })
   create(@Body() createElectricianDto: CreateElectricianDto) {
@@ -81,6 +84,7 @@ export class ElectricianController {
   }
 
   @Patch(':id')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update electrician' })
   @ApiResponse({ status: 200, description: 'Electrician updated successfully' })
   update(@Param('id') id: string, @Body() updateElectricianDto: UpdateElectricianDto) {
@@ -88,6 +92,7 @@ export class ElectricianController {
   }
 
   @Patch(':id/status')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update electrician status' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
   updateStatus(@Param('id') id: string, @Body('status') status: UserStatus) {
@@ -95,6 +100,7 @@ export class ElectricianController {
   }
 
   @Delete(':id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete electrician' })
   @ApiResponse({ status: 200, description: 'Electrician deleted successfully' })
   remove(@Param('id') id: string) {

@@ -12,15 +12,19 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { QrCodeService } from './qr-code.service';
 import { GenerateQrCodeDto } from './dto/generate-qr-code.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('QR Code Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('qr-codes')
 export class QrCodeController {
   constructor(private readonly qrCodeService: QrCodeService) {}
 
   @Post('generate')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Generate QR codes for a product (up to 20,000)' })
   @ApiResponse({ status: 201, description: 'QR codes generated and saved to database' })
   generate(@Body() generateQrCodeDto: GenerateQrCodeDto) {
@@ -68,6 +72,7 @@ export class QrCodeController {
 
   // NOTE: This route MUST come before /:id to avoid "delete-all" being treated as an id
   @Delete('delete-all')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete all QR codes (optionally filter by productId)' })
   @ApiResponse({ status: 200, description: 'QR codes deleted' })
   removeAll(@Query('productId') productId?: string) {
@@ -82,6 +87,7 @@ export class QrCodeController {
   }
 
   @Delete(':id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete a single QR code by ID or code string' })
   @ApiResponse({ status: 200, description: 'QR code deleted successfully' })
   remove(@Param('id') id: string) {

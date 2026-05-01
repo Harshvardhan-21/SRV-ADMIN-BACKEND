@@ -14,11 +14,13 @@ import { FinanceService } from './finance.service';
 import { TransferPointsDto } from './dto/transfer-points.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { TransactionType, UserRole } from '../../common/enums';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { TransactionType, UserRole, AdminRole } from '../../common/enums';
 
 @ApiTags('Finance Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('finance')
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
@@ -50,6 +52,7 @@ export class FinanceController {
   }
 
   @Post('dealer-bonus/transfer')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Transfer dealer bonus' })
   @ApiResponse({ status: 201, description: 'Bonus transferred successfully' })
   transferDealerBonus(
@@ -67,6 +70,7 @@ export class FinanceController {
   }
 
   @Post('transfer-points')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Manually transfer points between users' })
   @ApiResponse({ status: 201, description: 'Points transferred successfully' })
   transferPoints(
@@ -77,6 +81,7 @@ export class FinanceController {
   }
 
   @Patch('transfer-points/:id/reverse')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Reverse a points transfer' })
   @ApiResponse({ status: 200, description: 'Transfer reversed successfully' })
   reverseTransfer(
@@ -87,6 +92,7 @@ export class FinanceController {
   }
 
   @Delete('transfer-points/:id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete a points transfer record' })
   @ApiResponse({ status: 200, description: 'Transfer deleted successfully' })
   deleteTransfer(@Param('id') id: string) {
@@ -94,6 +100,7 @@ export class FinanceController {
   }
 
   @Patch('dealer-bonus/:dealerId/mark-paid')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Mark dealer bonus as paid' })
   @ApiResponse({ status: 200, description: 'Dealer bonus marked as paid' })
   markDealerBonusPaid(
@@ -104,6 +111,7 @@ export class FinanceController {
   }
 
   @Patch('dealer-bonus/:dealerId')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update dealer bonus record' })
   @ApiResponse({ status: 200, description: 'Dealer bonus updated successfully' })
   updateDealerBonus(
@@ -114,6 +122,7 @@ export class FinanceController {
   }
 
   @Post('dealer-bonus/bulk-mark-paid')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Bulk mark dealer bonuses as paid' })
   @ApiResponse({ status: 200, description: 'Dealer bonuses marked as paid' })
   bulkMarkDealerBonusPaid(

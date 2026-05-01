@@ -26,8 +26,8 @@ export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
   @Post()
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
-  @ApiOperation({ summary: 'Create new product (Super Admin & Admin only)' })
+  @Roles(AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Create new product (Super Admin only)' })
   @ApiResponse({ status: 201, description: 'Product created successfully' })
   create(@Body() createProductDto: CreateProductDto) {
     return this.productService.create(createProductDto);

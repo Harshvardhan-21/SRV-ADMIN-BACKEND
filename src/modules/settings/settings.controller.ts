@@ -13,10 +13,13 @@ import { UpdateSettingDto } from './dto/update-setting.dto';
 import { PointsConfigDto } from './dto/points-config.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('Settings Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('settings')
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
@@ -36,6 +39,7 @@ export class SettingsController {
   }
 
   @Put(':key')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update setting' })
   @ApiResponse({ status: 200, description: 'Setting updated successfully' })
   update(
@@ -47,6 +51,7 @@ export class SettingsController {
   }
 
   @Post('points-config')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Configure points for products' })
   @ApiResponse({ status: 201, description: 'Points configuration updated' })
   configurePoints(

@@ -25,8 +25,8 @@ export class ProductCategoryController {
   constructor(private readonly categoryService: ProductCategoryService) {}
 
   @Post()
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
-  @ApiOperation({ summary: 'Create new product category' })
+  @Roles(AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Create new product category (Super Admin only)' })
   @ApiResponse({ status: 201, description: 'Category created successfully' })
   create(@Body() createDto: CreateProductCategoryDto) {
     return this.categoryService.create(createDto);

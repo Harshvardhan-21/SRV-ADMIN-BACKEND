@@ -14,15 +14,19 @@ import { TestimonialService } from './testimonial.service';
 import { CreateTestimonialDto } from './dto/create-testimonial.dto';
 import { UpdateTestimonialDto } from './dto/update-testimonial.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('Testimonial Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('testimonials')
 export class TestimonialController {
   constructor(private readonly testimonialService: TestimonialService) {}
 
   @Post()
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create new testimonial' })
   @ApiResponse({ status: 201, description: 'Testimonial created successfully' })
   create(@Body() createTestimonialDto: CreateTestimonialDto) {
@@ -44,6 +48,7 @@ export class TestimonialController {
   }
 
   @Patch(':id')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update testimonial' })
   @ApiResponse({ status: 200, description: 'Testimonial updated successfully' })
   update(@Param('id') id: string, @Body() updateTestimonialDto: UpdateTestimonialDto) {
@@ -51,6 +56,7 @@ export class TestimonialController {
   }
 
   @Delete(':id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete testimonial' })
   @ApiResponse({ status: 200, description: 'Testimonial deleted successfully' })
   remove(@Param('id') id: string) {

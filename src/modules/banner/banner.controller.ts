@@ -13,15 +13,19 @@ import { BannerService } from './banner.service';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('Banner Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('banners')
 export class BannerController {
   constructor(private readonly bannerService: BannerService) {}
 
   @Post()
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create new banner' })
   @ApiResponse({ status: 201, description: 'Banner created successfully' })
   create(@Body() createBannerDto: CreateBannerDto) {
@@ -43,6 +47,7 @@ export class BannerController {
   }
 
   @Patch('reorder')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Reorder banners' })
   @ApiResponse({ status: 200, description: 'Banners reordered successfully' })
   reorder(@Body() bannerOrders: { id: string; order: number }[]) {
@@ -50,6 +55,7 @@ export class BannerController {
   }
 
   @Patch(':id')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update banner' })
   @ApiResponse({ status: 200, description: 'Banner updated successfully' })
   update(@Param('id') id: string, @Body() updateBannerDto: UpdateBannerDto) {
@@ -57,6 +63,7 @@ export class BannerController {
   }
 
   @Delete(':id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete banner' })
   @ApiResponse({ status: 200, description: 'Banner deleted successfully' })
   remove(@Param('id') id: string) {

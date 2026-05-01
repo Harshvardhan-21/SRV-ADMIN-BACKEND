@@ -14,10 +14,13 @@ import { GiftService } from './gift.service';
 import { CreateGiftProductDto } from './dto/create-gift-product.dto';
 import { UpdateGiftProductDto } from './dto/update-gift-product.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminRole } from '../../common/enums';
 
 @ApiTags('Gift Management')
 @ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('gifts')
 export class GiftController {
   constructor(private readonly giftService: GiftService) {}
@@ -36,6 +39,7 @@ export class GiftController {
   }
 
   @Post('products')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create new gift product' })
   @ApiResponse({ status: 201, description: 'Gift product created successfully' })
   createProduct(@Body() createGiftProductDto: CreateGiftProductDto) {
@@ -43,6 +47,7 @@ export class GiftController {
   }
 
   @Patch('products/:id')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update gift product' })
   @ApiResponse({ status: 200, description: 'Gift product updated successfully' })
   updateProduct(
@@ -53,6 +58,7 @@ export class GiftController {
   }
 
   @Delete('products/:id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete gift product' })
   @ApiResponse({ status: 200, description: 'Gift product deleted successfully' })
   deleteProduct(@Param('id') id: string) {
@@ -74,6 +80,7 @@ export class GiftController {
   }
 
   @Post('orders')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new gift order' })
   @ApiResponse({ status: 201, description: 'Gift order created successfully' })
   createOrder(@Body() body: {
@@ -89,6 +96,7 @@ export class GiftController {
   }
 
   @Patch('orders/:id/status')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
   @ApiOperation({ summary: 'Update gift order status' })
   @ApiResponse({ status: 200, description: 'Order status updated successfully' })
   updateOrderStatus(
@@ -103,6 +111,7 @@ export class GiftController {
   }
 
   @Delete('orders/:id')
+  @Roles(AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete a gift order' })
   @ApiResponse({ status: 200, description: 'Gift order deleted successfully' })
   deleteOrder(@Param('id') id: string) {
